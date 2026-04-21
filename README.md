@@ -12,7 +12,7 @@ It allows you to detect patterns such as flooding, brute-force attacks, and anom
 * Support for PCAP-based traffic analysis
 * **Batch analysis from ZIP archives containing multiple PCAP files**
 * Real-time or offline monitoring
-* Graphical visualization (via PyQt5 + pyqtgraph)
+* Graphical visualization 
 
 ---
 
