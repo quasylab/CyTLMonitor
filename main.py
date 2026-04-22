@@ -29,24 +29,15 @@ from PyQt5.QtWidgets import (
     QComboBox, QFileDialog, QMessageBox, QDialog, QDialogButtonBox,
     QFormLayout, QDoubleSpinBox, QProgressBar, QFrame,
     QTabWidget, QCheckBox, QAbstractItemView, QSizePolicy,
-    QScrollArea, QPlainTextEdit
+    QPlainTextEdit
 )
 from PyQt5.QtCore import (
-    Qt, QThread, pyqtSignal, QTimer, QObject, QSize, QRegExp
+    Qt, QThread, pyqtSignal, QTimer, QObject, QRegExp
 )
 from PyQt5.QtGui import (
     QColor, QFont, QPalette, QTextCharFormat, QSyntaxHighlighter,
-    QTextCursor, QTextDocument
+    QTextDocument
 )
-
-# ── pyqtgraph ─────────────────────────────────────────────────────────────────
-try:
-    import pyqtgraph as pg
-    pg.setConfigOption('background', '#0d1117')
-    pg.setConfigOption('foreground', '#c9d1d9')
-    PYQTGRAPH_AVAILABLE = True
-except ImportError:
-    PYQTGRAPH_AVAILABLE = False
 
 # ── Project modules ───────────────────────────────────────────────────────────
 from cytl_monitor_unit import Payload, PacketEvent
@@ -1214,55 +1205,6 @@ class CaptureWorker(QObject):
     def _on_done(self):
         self.status_changed.emit('Idle')
         self.done.emit()
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# REAL-TIME ROBUSTNESS CHART
-# ──────────────────────────────────────────────────────────────────────────────
-
-if PYQTGRAPH_AVAILABLE:
-    class RobustnessChart(pg.PlotWidget):
-        def __init__(self, parent=None):
-            super().__init__(parent)
-            self.setBackground(BG_MID)
-            self.showGrid(x=True, y=True, alpha=0.2)
-            self.setLabel('bottom', 'Time (s)', **{'color': TEXT_SEC, 'font-size':'10px'})
-            self.setLabel('left',   'Robustness', **{'color': TEXT_SEC, 'font-size':'10px'})
-            self.addLegend(offset=(10, 10))
-            self.addLine(y=0, pen=pg.mkPen(color=ACCENT_RED, width=1, style=Qt.DashLine))
-            self._curves: Dict[str, pg.PlotDataItem] = {}
-            self._data:   Dict[str, Tuple[List, List]] = {}
-            self._cols = [ACCENT_BLUE, ACCENT_GRN, ACCENT_ORG,
-                          ACCENT_RED, ACCENT_PRP, ACCENT_CYAN]
-            self._ci = 0
-            self.setMaximumHeight(200)
-
-        def update(self, name: str, t: float, r: float):
-            if name not in self._curves:
-                col  = self._cols[self._ci % len(self._cols)]; self._ci += 1
-                self._curves[name] = self.plot([], [], name=name[:20],
-                                                pen=pg.mkPen(color=col, width=2))
-                self._data[name]   = ([], [])
-            ts, rs = self._data[name]
-            ts.append(t); rs.append(max(-500, min(500, r)))
-            if len(ts) > 400: ts.pop(0); rs.pop(0)
-            self._curves[name].setData(ts, rs)
-
-        def clear_all(self):
-            for c in self._curves.values(): self.removeItem(c)
-            self._curves.clear(); self._data.clear(); self._ci = 0
-
-else:
-    class RobustnessChart(QWidget):
-        def __init__(self, parent=None):
-            super().__init__(parent)
-            lbl = QLabel('pyqtgraph not found — run: pip install pyqtgraph')
-            lbl.setAlignment(Qt.AlignCenter)
-            lbl.setStyleSheet(f'color:{TEXT_SEC};')
-            QVBoxLayout(self).addWidget(lbl)
-            self.setMaximumHeight(200)
-        def update(self, name, t, r): pass
-        def clear_all(self): pass
 
 
 # ──────────────────────────────────────────────────────────────────────────────
