@@ -198,11 +198,6 @@ pip install pytest black ruff mypy
 
 ---
 
-## 📖 Citation
-
-If you use this tool in research, please cite:
-
-> *A Temporal-Quantitative Logic Framework for Monitoring Network Traffic*
 
 ---
 
