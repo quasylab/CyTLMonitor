@@ -101,6 +101,14 @@ Run the main application:
 python main.py
 ```
 
+### Linux/macOS
+
+On Linux, packet capture and PCAP processing through Scapy may require elevated privileges.
+If you encounter permission errors, run:
+
+```bash
+sudo python main.py
+```
 ### 📂 Supported Input Modes
 
 CyTL supports two input modalities:
