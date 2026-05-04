@@ -164,14 +164,6 @@ cytl/
 
 ---
 
-## 🛠️ Development (optional)
-
-```bash
-pip install pytest black ruff mypy
-```
-
----
-
 ## 🧩 Troubleshooting
 
 ### ❌ Scapy not working
