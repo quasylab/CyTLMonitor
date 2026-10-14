@@ -13,6 +13,8 @@ segments are that class's responsibility, not this one's.
 
 from __future__ import annotations
 
+from typing import Optional
+
 from cytlmonitor.interval import Interval
 from cytlmonitor.polynomial import Polynomial
 
@@ -62,6 +64,29 @@ class Segment:
                 f"Time {time} is outside the segment's interval {self._interval!r}."
             )
         return self._polynomial.evaluate(time)
+
+    def sup(self) -> float:
+        """Return the supremum of this segment's polynomial over its interval."""
+        return self._polynomial.sup(self._interval)
+
+    def inf(self) -> float:
+        """Return the infimum of this segment's polynomial over its interval."""
+        return self._polynomial.inf(self._interval)
+
+    def shift(self, t: float) -> Optional['Segment']:
+        """Return a new segment with its interval shifted by ``t``
+        (see :meth:`~cytlmonitor.interval.Interval.shift`): forward if
+        ``t`` is positive, back if ``t`` is negative. The polynomial is
+        shifted along with it (see
+        :meth:`~cytlmonitor.polynomial.Polynomial.shift`), so that the new
+        segment takes at ``x + t`` the value this one takes at ``x``.
+
+        Returns ``None`` if the interval's ``shift`` returns ``None``.
+        """
+        shifted = self._interval.shift(t)
+        if shifted is None:
+            return None
+        return Segment(shifted, self._polynomial.shift(t))
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, Segment):

@@ -53,5 +53,8 @@ class Event:
             return NotImplemented
         return self._time == other._time and self._payload == other._payload
 
+    def __hash__(self) -> int:
+        return hash((self._time, self._payload))
+
     def __repr__(self) -> str:
         return f"Event(time={self._time}, payload={self._payload!r})"

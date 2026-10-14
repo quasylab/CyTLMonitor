@@ -45,7 +45,7 @@ from __future__ import annotations
 from collections import deque
 from typing import Callable, List, Optional
 
-from cytl_monitor_unit import PacketEvent, Segment, SegmentCollector
+from cytl_monitor_unit import Event, Segment, SegmentCollector
 
 
 def _wrap_formula(x) -> 'FormulaMG':
@@ -80,7 +80,7 @@ class MonitorResult:
 class QExprMG:
     """Base for expressions that evaluate to a float robustness value."""
 
-    def process(self, event: PacketEvent) -> float:
+    def process(self, event: Event) -> float:
         raise NotImplementedError
 
     def horizon(self) -> float:
@@ -120,7 +120,7 @@ def _wrap(x) -> QExprMG:
 class FormulaMG:
     """Base for CyTL formulas — return MonitorResult on each event."""
 
-    def process(self, event: PacketEvent) -> MonitorResult:
+    def process(self, event: Event) -> MonitorResult:
         raise NotImplementedError
 
     def horizon(self) -> float:
@@ -142,7 +142,7 @@ class ConstantMG(QExprMG):
     def __init__(self, value: float):
         self.value = value
 
-    def process(self, event: PacketEvent) -> float:
+    def process(self, event: Event) -> float:
         return self.value
 
     def __str__(self):
@@ -158,7 +158,7 @@ class WeightFnMG(QExprMG):
         self.fn   = fn
         self.name = name
 
-    def process(self, event: PacketEvent) -> float:
+    def process(self, event: Event) -> float:
         return float(self.fn(event.payload))
 
     def __str__(self):
@@ -175,7 +175,7 @@ class LinearCombMG(QExprMG):
         self.children = children
         self.name     = op
 
-    def process(self, event: PacketEvent) -> float:
+    def process(self, event: Event) -> float:
         vals = [c.process(event) for c in self.children]
         if self.op == '+':   return vals[0] + vals[1]
         if self.op == '-':   return vals[0] - vals[1]
@@ -226,7 +226,7 @@ class CountingOpMG(QExprMG):
     def monitor(self) -> 'CountingOpMG':
         return self
 
-    def process(self, event: PacketEvent) -> float:
+    def process(self, event: Event) -> float:
         t = event.get_time()
         val = self.inner.process(event)
 
@@ -296,7 +296,7 @@ class MinOpMG(QExprMG):
         self._mono: deque = deque()      # monotonic increasing (front = min)
         self._seq = 0
 
-    def process(self, event: PacketEvent) -> float:
+    def process(self, event: Event) -> float:
         t = event.get_time()
         val = self.inner.process(event)
 
@@ -348,7 +348,7 @@ class MaxOpMG(QExprMG):
         self._mono: deque = deque()      # monotonic decreasing (front = max)
         self._seq = 0
 
-    def process(self, event: PacketEvent) -> float:
+    def process(self, event: Event) -> float:
         t = event.get_time()
         val = self.inner.process(event)
 
@@ -391,7 +391,7 @@ class ComparisonMG(FormulaMG):
         self.rho2 = rho2
         self.op   = op
 
-    def process(self, event: PacketEvent) -> MonitorResult:
+    def process(self, event: Event) -> MonitorResult:
         l = self.rho1.process(event)
         r = self.rho2.process(event)
 
@@ -428,7 +428,7 @@ class NegationMG(FormulaMG):
     def __init__(self, child: FormulaMG):
         self.child = _wrap_formula(child)
 
-    def process(self, event: PacketEvent) -> MonitorResult:
+    def process(self, event: Event) -> MonitorResult:
         r = self.child.process(event)
         return MonitorResult(not r.verdict, -r.robustness)
 
@@ -454,7 +454,7 @@ class ConjunctionMG(FormulaMG):
     def __and__(self, other):
         return ConjunctionMG(self.children + [_wrap_formula(other)])
 
-    def process(self, event: PacketEvent) -> MonitorResult:
+    def process(self, event: Event) -> MonitorResult:
         results = [c.process(event) for c in self.children]
         rob = min(r.robustness for r in results)
         return MonitorResult(all(r.verdict for r in results), rob)
@@ -477,7 +477,7 @@ class DisjunctionMG(FormulaMG):
     def __or__(self, other):
         return DisjunctionMG(self.children + [_wrap_formula(other)])
 
-    def process(self, event: PacketEvent) -> MonitorResult:
+    def process(self, event: Event) -> MonitorResult:
         results = [c.process(event) for c in self.children]
         rob = max(r.robustness for r in results)
         return MonitorResult(any(r.verdict for r in results), rob)
@@ -502,7 +502,7 @@ class FilterMG(FormulaMG):
         self.child = _wrap_formula(child)
         self.name  = name
 
-    def process(self, event: PacketEvent) -> MonitorResult:
+    def process(self, event: Event) -> MonitorResult:
         if self.pred(event.payload):
             return self.child.process(event)
         return MonitorResult(False, float('-inf'))
@@ -535,7 +535,7 @@ class UntilMG(FormulaMG):
         # buffer: (timestamp, rob_phi1, rob_phi2)
         self._buf: deque = deque()
 
-    def process(self, event: PacketEvent) -> MonitorResult:
+    def process(self, event: Event) -> MonitorResult:
         t  = event.get_time()
         r1 = self.phi1.process(event)
         r2 = self.phi2.process(event)
@@ -588,7 +588,7 @@ class ShiftForwardMG(FormulaMG):
         self._buf: deque = deque()                          # buffered PacketEvents
         self._last: MonitorResult = MonitorResult(False, float('-inf'))
 
-    def process(self, event: PacketEvent) -> MonitorResult:
+    def process(self, event: Event) -> MonitorResult:
         t = event.get_time()
         self._buf.append(event)
 
@@ -619,7 +619,7 @@ class ShiftBackMG(FormulaMG):
         self.a = a
         self._history: deque = deque()   # (timestamp, MonitorResult)
 
-    def process(self, event: PacketEvent) -> MonitorResult:
+    def process(self, event: Event) -> MonitorResult:
         t = event.get_time()
         r = self.child.process(event)
         self._history.append((t, r))
@@ -669,7 +669,7 @@ class PacketModalityMG(FormulaMG):
         self._mono: deque = deque()      # monotonic decreasing by robustness
         self._seq = 0
 
-    def process(self, event: PacketEvent) -> MonitorResult:
+    def process(self, event: Event) -> MonitorResult:
         t = event.get_time()
         r = self.child.process(event)
 
@@ -709,14 +709,14 @@ class PacketModalityMG(FormulaMG):
 # =============================================================================
 
 class TrueMG(FormulaMG):
-    def process(self, event: PacketEvent) -> MonitorResult:
+    def process(self, event: Event) -> MonitorResult:
         return MonitorResult(True, float('inf'))
 
     def __str__(self): return 'TRUE'
 
 
 class FalseMG(FormulaMG):
-    def process(self, event: PacketEvent) -> MonitorResult:
+    def process(self, event: Event) -> MonitorResult:
         return MonitorResult(False, float('-inf'))
 
     def __str__(self): return 'FALSE'
@@ -735,7 +735,7 @@ class MonitoringGraph:
         self.formula = formula
         self.name    = name
 
-    def process(self, event: PacketEvent) -> MonitorResult:
+    def process(self, event: Event) -> MonitorResult:
         return self.formula.process(event)
 
     def flush(self, end_time: float):

@@ -41,5 +41,8 @@ class Payload(Mapping):
     def __len__(self) -> int:
         return len(self._data)
 
+    def __hash__(self) -> int:
+        return hash(frozenset(self._data.items()))
+
     def __repr__(self) -> str:
         return f"Payload({self._data!r})"

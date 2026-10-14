@@ -88,5 +88,23 @@ class TestEqualityAndRepr(unittest.TestCase):
         self.assertIn("'a': 1", r)
 
 
+class TestHash(unittest.TestCase):
+
+    def test_equal_events_have_equal_hashes(self):
+        self.assertEqual(hash(Event(1.0, Payload({'a': 1}))),
+                         hash(Event(1.0, Payload({'a': 1}))))
+
+    def test_event_can_be_used_as_dict_key(self):
+        d = {Event(1.0, Payload({'a': 1})): 'x'}
+        self.assertEqual(d[Event(1.0, Payload({'a': 1}))], 'x')
+
+    def test_events_differing_in_time_are_distinct_keys(self):
+        d = {Event(1.0, Payload({'a': 1})): 'x'}
+        self.assertNotIn(Event(2.0, Payload({'a': 1})), d)
+
+    def test_unhashable_payload_value_raises_type_error(self):
+        with self.assertRaises(TypeError):
+            hash(Event(1.0, Payload({'a': [1, 2]})))
+
 if __name__ == '__main__':
     unittest.main()

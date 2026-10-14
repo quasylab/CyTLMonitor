@@ -40,7 +40,7 @@ from PyQt5.QtGui import (
 )
 
 # ── Project modules ───────────────────────────────────────────────────────────
-from cytl_monitor_unit import Payload, PacketEvent
+from cytl_monitor_unit import Payload, Event
 from cytl_rules_mg import Rule, RuleSet, _default_rules
 from cytl_capture import (
     PcapLoader, LiveCapture, get_interfaces, get_interface_details,
@@ -1187,12 +1187,12 @@ class CaptureWorker(QObject):
                         'tcp_urg': 0,
                     })
 
-                self._emit_pkt(PacketEvent(ts, payload))
+                self._emit_pkt(Event(ts, payload))
                 time.sleep(0.005)
         finally:
             self._on_done()
 
-    def _emit_pkt(self, event: PacketEvent):
+    def _emit_pkt(self, event: Event):
         if self._ruleset is not None:
             try:
                 alerts = self._ruleset.process(event)

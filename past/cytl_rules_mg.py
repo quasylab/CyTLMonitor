@@ -4,7 +4,7 @@ import threading
 from dataclasses import dataclass, field
 from typing import ClassVar, Dict, List, Optional
 
-from cytl_monitor_unit import PacketEvent
+from cytl_monitor_unit import Event
 from cytl_mg import (
     FormulaMG,
     MonitoringGraph,
@@ -295,7 +295,7 @@ class RuleSet:
             self.graphs.pop(name, None)
             self._last_robustness.pop(name, None)
 
-    def process(self, event: PacketEvent) -> List[RuleHit]:
+    def process(self, event: Event) -> List[RuleHit]:
         hits: List[RuleHit] = []
         with self._lock:
             graphs = list(self.graphs.items())

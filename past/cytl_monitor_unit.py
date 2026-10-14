@@ -29,7 +29,7 @@ class Payload:
 
 
 @dataclass
-class PacketEvent(TimedEvent):
+class Event(TimedEvent):
     timestamp: float
     payload: Payload
 

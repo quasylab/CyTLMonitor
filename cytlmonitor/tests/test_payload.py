@@ -111,5 +111,19 @@ class TestEqualityAndRepr(unittest.TestCase):
         self.assertIn("'a': 1", repr(p))
 
 
+class TestHash(unittest.TestCase):
+
+    def test_equal_payloads_have_equal_hashes(self):
+        self.assertEqual(hash(Payload({'a': 1, 'b': 2})),
+                         hash(Payload({'b': 2, 'a': 1})))
+
+    def test_payload_can_be_used_as_dict_key(self):
+        d = {Payload({'a': 1}): 'x'}
+        self.assertEqual(d[Payload({'a': 1})], 'x')
+
+    def test_unhashable_value_raises_type_error(self):
+        with self.assertRaises(TypeError):
+            hash(Payload({'a': [1, 2]}))
+
 if __name__ == '__main__':
     unittest.main()

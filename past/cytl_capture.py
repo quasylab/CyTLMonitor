@@ -14,7 +14,7 @@ import time
 import zipfile
 from typing import Callable, Dict, List, Optional, Tuple
 
-from cytl_monitor_unit import Payload, PacketEvent
+from cytl_monitor_unit import Payload, Event
 
 # ── scapy import ──────────────────────────────────────────────────────────────
 try:
@@ -26,7 +26,7 @@ try:
 except ImportError:
     SCAPY_AVAILABLE = False
 
-PacketCallback = Callable[[PacketEvent], None]
+PacketCallback = Callable[[Event], None]
 
 # PCAP and PCAPNG magic numbers (first 4 bytes)
 _PCAP_MAGIC = {
@@ -378,7 +378,7 @@ class PcapLoader:
                         time.sleep(delay)
                 prev_time = abs_time
 
-                self.callback(PacketEvent(timestamp=abs_time, payload=payload))
+                self.callback(Event(timestamp=abs_time, payload=payload))
                 self.loaded_packets += 1
                 if self.debug_print and self.loaded_packets % self.debug_every == 0:
                     print(
@@ -531,7 +531,7 @@ class LiveCapture:
         payload = parse_packet(pkt)
         if payload is not None:
             self.packet_count += 1
-            self.callback(PacketEvent(timestamp=float(pkt.time), payload=payload))
+            self.callback(Event(timestamp=float(pkt.time), payload=payload))
 
     def stop(self):
         self._stop.set()

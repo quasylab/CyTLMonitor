@@ -52,7 +52,7 @@ import traceback
 from dataclasses import dataclass, field
 from typing import List, Optional
 
-from cytl_monitor_unit import Payload, PacketEvent
+from cytl_monitor_unit import Payload, Event
 from cytl_mg import (
     FormulaMG, QExprMG, MonitoringGraph, MonitorResult,
     ConstantMG, WeightFnMG, CountingOpMG, MinOpMG, MaxOpMG, LinearCombMG,
@@ -312,7 +312,7 @@ def test_formula(formula: FormulaMG, scenario: str = 'syn_flood',
                 'tcp_rst': 0, 'tcp_psh': 0, 'tcp_urg': 0,
             }
 
-        event = PacketEvent(timestamp=t, payload=Payload(fields))
+        event = Event(timestamp=t, payload=Payload(fields))
         res   = graph.process(event)
         proto = fields.get('protocol', '')
         flags = ''.join(k[-3:] for k in ('tcp_syn', 'tcp_ack', 'tcp_fin', 'tcp_rst')
