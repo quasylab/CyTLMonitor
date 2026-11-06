@@ -68,15 +68,20 @@ then to ``arg2`` (only to ``arg1`` when they are the same object), and a
 :class:`~cytlmonitor.monitors.base.MonitorInput` installed in each
 collects the intervals and horizons it publishes.
 
-Once both are known up to ``h``, the window ``t + i_arg`` of every
-``t < h - b`` (``b`` being the end of ``i_arg``) lies where both signals
-are known, so the signal is computed up to ``h - b``: given the maximal
-intervals ``I`` where ``arg1`` is true and ``J`` where ``arg2`` is true, it
-is the union of ``(Ī ∩ J).backward(i_arg) ∩ I`` over every pair, ``Ī``
-being ``I`` closed on the right (``t'`` may be its end), together with the
-``J`` themselves when ``i_arg`` contains 0. The newly
-computed part is published, followed by ``h - b`` as the new horizon.
-``i_arg`` must therefore be bounded.
+Given the maximal intervals ``I`` where ``arg1`` is true and ``J`` where
+``arg2`` is true, the signal is the union of ``(Ī ∩ J).backward(i_arg) ∩ I``
+over every pair, ``Ī`` being ``I`` closed on the right (``t'`` may be its
+end), together with the ``J`` themselves when ``i_arg`` contains 0.
+
+The signal is published as soon as it is decided, not only once every
+window is known. It is computed twice: with the arguments taken as false
+after their horizons, and as true. The signal being monotone in both
+arguments, wherever the two agree it is decided whatever the arguments turn
+out to be; the part from the published horizon up to the first point where
+they differ is published, followed by that point as the new horizon. This
+includes ``[0, min(h1, h2) - b)`` (``b`` being the end of ``i_arg``), where
+every window is known, but also, say, wherever ``arg1`` is already false
+and 0 is not in ``i_arg``. ``i_arg`` must be bounded.
 
 Only the intervals that may still matter are kept, those reaching beyond
 the published part, and adjacent intervals are merged, so a long stretch
@@ -109,20 +114,25 @@ then to ``arg2`` (only to ``arg1`` when they are the same object), and a
 :class:`~cytlmonitor.monitors.base.MonitorInput` installed in each
 collects the intervals and horizons it publishes.
 
-The signal only looks at the past, so it is known wherever both arguments
-are: once both are known up to ``h``, given the maximal intervals ``I``
-where ``arg1`` is true and ``J`` where ``arg2`` is true, it is the union of
+Given the maximal intervals ``I`` where ``arg1`` is true and ``J`` where
+``arg2`` is true, the signal is the union of
 ``(Ī ∩ J) ⊕ i_arg ∩ I`` over every pair (``Ī`` being ``I`` closed on the
 left, since ``t'`` may be its start, and ``⊕`` adding ``i_arg`` to every
 point), of ``{e} ⊕ i_arg⁺ ∩ I`` for the open end ``e`` of every ``J``
 lying in ``Ī`` (``i_arg⁺`` being ``i_arg`` without 0), and of the ``J``
-themselves when ``i_arg`` contains 0, and
-the part of it up to ``h`` not yet published is published,
-followed by ``h`` as the new horizon. ``i_arg`` may be right unbounded.
+themselves when ``i_arg`` contains 0. ``i_arg`` may be right unbounded.
+
+The signal only looks at the past, so it is known wherever both arguments
+are, on ``[0, min(h1, h2))``, but it is often decided further: as for
+:class:`UntilMonitor`, it is computed with the arguments taken as false
+after their horizons and as true, and published up to the first point where
+the two differ. ``arg1`` false at ``t`` decides it, say, even if ``arg2``
+lags behind, and ``arg2`` false on a past window decides it even beyond both
+horizons.
 
 Only the intervals that may still matter are kept: those of ``arg1`` from
-the start of the stretch where it is still true at ``h``, and those of
-``arg2`` from where they can still be reached. Adjacent intervals are
+the start of the stretch that may still contain a time after the published
+horizon, and those of ``arg2`` from where they can still be reached. Adjacent intervals are
 merged, so a long stretch received in pieces is kept as one.
 
 This relies on a monitor never publishing, after horizon ``h``, an
@@ -288,11 +298,48 @@ class GloballyMonitor(EventMonitor):
         self._inner.consume(e)
 
 
+def _bounds(left: MonitorInput, right: MonitorInput):
+    """The signals of the two arguments as far as they are known, with what
+    follows their horizons taken as false (the lower bounds) and as true
+    (the upper bounds): ``(low1, low2, high1, high2)``."""
+    low1, low2 = (m.restricted_to(Interval(0.0, m.horizon)) if m.horizon > 0
+                  else BooleanSignal() for m in (left, right))
+    high1 = low1.union(BooleanSignal([Interval(left.horizon)]))
+    high2 = low2.union(BooleanSignal([Interval(right.horizon)]))
+    return low1, low2, high1, high2
+
+
+def _decided_until(low: BooleanSignal, high: BooleanSignal, start: float) -> Optional[float]:
+    """The first point from ``start`` where ``high`` holds and ``low`` does
+    not, ``low`` being included in ``high``; None if there is none.
+
+    For an operator monotone in its arguments, ``low`` and ``high`` being
+    its signal evaluated on the lower and upper bounds of the arguments,
+    the signal is decided from ``start`` up to that point whatever the
+    arguments turn out to be where they are not known yet.
+    """
+    tail = Interval(start)
+    lows = list(low)
+    k = 0
+    for u in high:
+        part = u.intersection(tail)
+        if part is None:
+            continue
+        while k < len(lows) and lows[k].is_before(part):
+            k += 1
+        cover = lows[k].intersection(part) if k < len(lows) else None
+        if cover is None or cover.start != part.start or cover.left_open != part.left_open:
+            return part.start
+        if cover != part:
+            return cover.end
+    return None
+
+
 class UntilMonitor(EventMonitor):
     """An EventMonitor publishing where the signal of ``arg1`` stays true
     until the signal of ``arg2`` is true, within ``i_arg``."""
 
-    __slots__ = ('_arg1', '_arg2', '_i_arg', '_left', '_right', '_horizon')
+    __slots__ = ('_arg1', '_arg2', '_i_arg', '_left', '_right', '_horizon', '_consuming')
 
     def __init__(self, arg1: EventMonitor, arg2: EventMonitor, i_arg: Interval):
         super().__init__()
@@ -310,6 +357,9 @@ class UntilMonitor(EventMonitor):
         self._right = MonitorInput(self)
         # The output is published on [0, horizon).
         self._horizon = 0.0
+        # True while an event is passed to arg1 and arg2: advancing waits
+        # until both have processed it.
+        self._consuming = False
         arg1.add(self._left)
         arg2.add(self._right)
 
@@ -332,22 +382,47 @@ class UntilMonitor(EventMonitor):
     def consume(self, e: Event) -> None:
         """Pass ``e`` to ``arg1`` and then to ``arg2`` (only to ``arg1``
         when they are the same object); the intervals and horizons they
-        publish are combined and published."""
-        self._arg1.consume(e)
-        if self._arg2 is not self._arg1:
-            self._arg2.consume(e)
+        publish are combined and published once both have processed
+        ``e``."""
+        self._consuming = True
+        try:
+            self._arg1.consume(e)
+            if self._arg2 is not self._arg1:
+                self._arg2.consume(e)
+        finally:
+            self._consuming = False
+        self._advance()
 
     def _advance(self) -> None:
-        """Publish the signal over the newly computable part
-        ``[horizon, min(h1, h2) - b)``, then the new horizon."""
-        known = min(self._left.horizon, self._right.horizon)
-        target = known - self._i_arg.end
+        """Publish the signal over the newly decided part, then the new
+        horizon.
+
+        The signal is decided where it is the same on the lower and upper
+        bounds of the arguments (see :func:`_bounds`), which includes
+        ``[0, min(h1, h2) - b)`` where every window is known."""
+        if self._consuming:
+            return
+        # Compact even when the horizon does not move, as the inputs may
+        # then keep growing in pieces.
+        self._left.compact()
+        self._right.compact()
+        low1, low2, high1, high2 = _bounds(self._left, self._right)
+        low = self._evaluate(low1, low2)
+        end = _decided_until(low, self._evaluate(high1, high2), self._horizon)
+        target = max(self._left.horizon, self._right.horizon) if end is None else end
         if target <= self._horizon:
             return
-        known_part = Interval(0.0, known)
-        holding = self._left.restricted_to(known_part)
-        reached = self._right.restricted_to(known_part)
+        window = BooleanSignal([Interval(self._horizon, target)])
+        for i in low.intersection(window):
+            self.publish(i)
+        self._horizon = target
+        self._left.discard_before(target)
+        self._right.discard_before(target)
+        self.publish_horizon(target)
 
+    def _evaluate(self, holding: BooleanSignal, reached: BooleanSignal) -> BooleanSignal:
+        """The signal for ``arg1`` true on ``holding`` and ``arg2`` true on
+        ``reached``."""
         result = reached if self._i_arg.contains(0) else BooleanSignal()
         for i in holding:
             closed = Interval(i.start, i.end, left_open=i.left_open, right_open=False)
@@ -361,16 +436,7 @@ class UntilMonitor(EventMonitor):
                 part = start.intersection(i)
                 if part is not None:
                     result = result.union(BooleanSignal([part]))
-
-        window = BooleanSignal([Interval(self._horizon, target)])
-        for i in result.intersection(window):
-            self.publish(i)
-        self._horizon = target
-        self._left.discard_before(target)
-        self._right.discard_before(target)
-        self._left.compact()
-        self._right.compact()
-        self.publish_horizon(target)
+        return result
 
 
 def _forward(x: Interval, i: Interval) -> Interval:
@@ -385,7 +451,7 @@ class SinceMonitor(EventMonitor):
     true since the signal of ``arg2`` was true, within ``i_arg`` in the
     past."""
 
-    __slots__ = ('_arg1', '_arg2', '_i_arg', '_left', '_right', '_horizon')
+    __slots__ = ('_arg1', '_arg2', '_i_arg', '_left', '_right', '_horizon', '_consuming')
 
     def __init__(self, arg1: EventMonitor, arg2: EventMonitor, i_arg: Interval):
         super().__init__()
@@ -401,6 +467,9 @@ class SinceMonitor(EventMonitor):
         self._right = MonitorInput(self)
         # The output is published on [0, horizon).
         self._horizon = 0.0
+        # True while an event is passed to arg1 and arg2: advancing waits
+        # until both have processed it.
+        self._consuming = False
         arg1.add(self._left)
         arg2.add(self._right)
 
@@ -423,21 +492,46 @@ class SinceMonitor(EventMonitor):
     def consume(self, e: Event) -> None:
         """Pass ``e`` to ``arg1`` and then to ``arg2`` (only to ``arg1``
         when they are the same object); the intervals and horizons they
-        publish are combined and published."""
-        self._arg1.consume(e)
-        if self._arg2 is not self._arg1:
-            self._arg2.consume(e)
+        publish are combined and published once both have processed
+        ``e``."""
+        self._consuming = True
+        try:
+            self._arg1.consume(e)
+            if self._arg2 is not self._arg1:
+                self._arg2.consume(e)
+        finally:
+            self._consuming = False
+        self._advance()
 
     def _advance(self) -> None:
-        """Publish the signal over the newly known part
-        ``[horizon, min(h1, h2))``, then the new horizon."""
-        target = min(self._left.horizon, self._right.horizon)
+        """Publish the signal over the newly decided part, then the new
+        horizon.
+
+        The signal is decided where it is the same on the lower and upper
+        bounds of the arguments (see :func:`_bounds`), which includes
+        ``[0, min(h1, h2))`` where both are known."""
+        if self._consuming:
+            return
+        # Compact even when the horizon does not move, as the inputs may
+        # then keep growing in pieces.
+        self._left.compact()
+        self._right.compact()
+        low1, low2, high1, high2 = _bounds(self._left, self._right)
+        low = self._evaluate(low1, low2)
+        end = _decided_until(low, self._evaluate(high1, high2), self._horizon)
+        target = max(self._left.horizon, self._right.horizon) if end is None else end
         if target <= self._horizon:
             return
-        known_part = Interval(0.0, target)
-        holding = self._left.restricted_to(known_part)
-        reached = self._right.restricted_to(known_part)
+        window = BooleanSignal([Interval(self._horizon, target)])
+        for i in low.intersection(window):
+            self.publish(i)
+        self._horizon = target
+        self._discard(low1, target)
+        self.publish_horizon(target)
 
+    def _evaluate(self, holding: BooleanSignal, reached: BooleanSignal) -> BooleanSignal:
+        """The signal for ``arg1`` true on ``holding`` and ``arg2`` true on
+        ``reached``."""
         result = reached if self._i_arg.contains(0) else BooleanSignal()
         positive = self._positive_offsets()
         for i in holding:
@@ -454,15 +548,7 @@ class SinceMonitor(EventMonitor):
                     part = _forward(Interval.point(j.end), positive).intersection(i)
                     if part is not None:
                         result = result.union(BooleanSignal([part]))
-
-        window = BooleanSignal([Interval(self._horizon, target)])
-        for i in result.intersection(window):
-            self.publish(i)
-        self._horizon = target
-        self._discard(holding, target)
-        self._left.compact()
-        self._right.compact()
-        self.publish_horizon(target)
+        return result
 
     def _positive_offsets(self):
         """``i_arg`` without 0 (None if it is just 0)."""
@@ -474,20 +560,26 @@ class SinceMonitor(EventMonitor):
         return Interval(0.0, i.end, left_open=True, right_open=i.right_open)
 
     def _discard(self, holding: BooleanSignal, target: float) -> None:
-        """Drop the intervals that can no longer make any time after
-        ``target`` true."""
-        last = holding[-1] if holding.length() else None
-        if last is None or last.end != target:
-            # arg1 is not true just before target: only new stretches of
-            # arg1, starting at target or later, matter.
-            self._left.discard_before(target)
-            # An interval of arg2 ending at target may still be followed by
-            # arg1 starting there.
-            self._right.discard_ending_before(target)
-            return
-        # The stretch of arg1 still true at target starts at last.start.
-        self._left.discard_before(last.start)
-        reach = last.start
+        """Drop the intervals that can no longer make any time from
+        ``target`` on true, ``holding`` being where ``arg1`` is known to be
+        true (up to its horizon ``h1``, which may differ from ``target``)."""
+        h1 = self._left.horizon
+        # A time t >= target is made true from within the stretch of arg1
+        # containing it: one reaching target, or the one still true at h1
+        # (which may go on), or one starting at h1 or later.
+        keep = min(target, h1)
+        # Witnesses t' come from that stretch, or are t itself (target or
+        # later) when i_arg contains 0.
+        reach = keep
+        for i in holding:
+            if (i.end is None or i.end >= target or i.end == h1) and not (
+                    i.end == target and i.right_open and i.end != h1):
+                keep = min(keep, i.start)
+                reach = min(reach, i.start)
+                break
+        self._left.discard_before(keep)
         if self._i_arg.end is not None:
             reach = max(reach, target - self._i_arg.end)
+        # An interval of arg2 ending at the start of the stretch may still
+        # be followed by arg1 starting there.
         self._right.discard_ending_before(reach)

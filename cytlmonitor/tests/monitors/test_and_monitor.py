@@ -12,6 +12,7 @@ from cytlmonitor.monitors.constants import FalseMonitor
 from cytlmonitor.core.interval import Interval
 from cytlmonitor.events.payload import Payload
 from cytlmonitor.monitors.constants import TrueMonitor
+from cytlmonitor.monitors.temporal import EventuallyMonitor
 
 
 class RecordingConsumer(BooleanSignalConsumer):
@@ -50,6 +51,21 @@ class Replay(EventMonitor):
             self.publish(i)
         if horizon is not None:
             self.publish_horizon(horizon)
+
+
+def settled(signal, horizon, dominant, h):
+    """Reference: how far past ``h`` an operand with the given full
+    ``signal`` and ``horizon`` decides the result alone."""
+    if horizon <= h:
+        return h
+    window = Interval(h, horizon)
+    parts = BooleanSignal([p for p in (i.intersection(window) for i in signal) if p is not None])
+    first = next(iter(parts), None)
+    if dominant:
+        if first is not None and first.start == h and not first.left_open:
+            return first.end
+        return h
+    return horizon if first is None else first.start
 
 
 def tick(t=0):
@@ -112,6 +128,21 @@ class TestConsume(unittest.TestCase):
         c = run([([Interval(0, 4)], 4)], [([], None)])
         self.assertEqual(c.received, [])
         self.assertEqual(c.horizons, [])
+
+    def test_false_operand_is_published_before_the_other_moves(self):
+        c = run([([Interval(3, 5)], 6)], [([], None)])
+        self.assertEqual(c.received, [])
+        self.assertEqual(c.horizons, [3.0])
+
+    def test_false_second_operand_is_published_before_the_first_moves(self):
+        c = run([([], None)], [([], 6)])
+        self.assertEqual(c.horizons, [6.0])
+
+    def test_late_intervals_within_the_known_part_are_ignored(self):
+        # m2 is false on [0, 4) and m1 later turns out true there.
+        c = run([([], None), ([Interval(0, 8)], 8)], [([], 4), ([Interval(4, 6)], 8)])
+        self.assertEqual(c.received, [Interval(4, 6)])
+        self.assertEqual(c.horizons, [4.0, 8.0])
 
     def test_interval_beyond_the_known_part_is_clipped_and_resumed(self):
         # m1 is true on [0, 10) at once; m2 becomes known in two steps.
@@ -193,7 +224,9 @@ class TestConsume(unittest.TestCase):
             c = run(s1, s2)
             sig1 = BooleanSignal([i for batch, _ in s1 for i in batch])
             sig2 = BooleanSignal([i for batch, _ in s2 for i in batch])
-            known = min(s1[-1][1], s2[-1][1])
+            h1, h2 = s1[-1][1], s2[-1][1]
+            known = max(settled(sig1, h1, False, min(h1, h2)),
+                        settled(sig2, h2, False, min(h1, h2)))
 
             for a, b in zip(c.received, c.received[1:]):
                 self.assertTrue(a.is_before(b))
@@ -216,6 +249,18 @@ class TestConsume(unittest.TestCase):
 
 
 class TestWithMonitors(unittest.TestCase):
+
+    def test_false_operand_is_not_held_back_by_a_lagging_eventually(self):
+        # The eventually is never known on a finite prefix, but the
+        # conjunction is false as soon as its first operand is.
+        lagging = EventuallyMonitor(FalseMonitor(), Interval(0))
+        m = AndMonitor(FalseMonitor(), lagging)
+        c = RecordingConsumer()
+        m.add(c)
+        for t in (1, 3):
+            m.consume(tick(t))
+        self.assertEqual(c.received, [])
+        self.assertEqual(c.horizons, [1.0, 3.0])
 
     def test_true_and_true_is_true(self):
         m = AndMonitor(TrueMonitor(), TrueMonitor())

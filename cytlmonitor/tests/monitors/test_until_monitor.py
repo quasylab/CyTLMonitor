@@ -74,6 +74,24 @@ def merged(intervals):
     return list(BooleanSignal(intervals))
 
 
+def completed(intervals, horizon):
+    """``intervals`` with what follows ``horizon`` taken as true."""
+    return list(BooleanSignal(intervals).union(BooleanSignal([Interval(horizon)])))
+
+
+def until(phi, psi, i_arg, t):
+    """The definition: arg2 at some t' in t + i_arg, arg1 on [t, t')."""
+    expected = i_arg.contains(0) and any(j.contains(t) for j in psi)
+    around = [i for i in phi if i.contains(t)]
+    if around:
+        i = around[0]
+        reach = Interval(i.start, i.end, left_open=i.left_open, right_open=False)
+        reachable = i_arg.shift(t).intersection(reach)
+        expected = expected or (reachable is not None and any(
+            reachable.intersect(j) for j in psi))
+    return expected
+
+
 class TestConstruction(unittest.TestCase):
 
     def test_is_an_event_monitor(self):
@@ -131,9 +149,11 @@ class TestConsume(unittest.TestCase):
         # arg1 on [0, 5), arg2 on [4, 6), within [1, 2]: t' in
         # [t + 1, t + 2], in [4, 6) and at most 5 (arg1 holds on [t, t')),
         # so t in [2, 4].
+        # Every window is known below 10 - 2 = 8; on [8, 10) arg1 is false,
+        # which decides the signal too.
         c = run([([Interval(0, 5)], 10)], [([Interval(4, 6)], 10)], closed(1, 2))
         self.assertEqual(merged(c.received), [closed(2, 4)])
-        self.assertEqual(c.horizons, [8.0])
+        self.assertEqual(c.horizons, [10.0])
 
     def test_arg1_is_not_needed_at_t_prime(self):
         # arg1 on [0, 4), arg2 on [4, 6), within (0, 2]: arg1 stops exactly
@@ -172,10 +192,30 @@ class TestConsume(unittest.TestCase):
         c = run([([Interval(0, 8)], 10)], [([Interval(2, 3)], 10)], closed(0, 1))
         self.assertEqual(merged(c.received), [Interval(1, 3)])
 
-    def test_nothing_is_published_until_both_are_known_far_enough(self):
-        c = run([([Interval(0, 5)], 3)], [([Interval(1, 2)], 10)], closed(0, 4))
+    def test_nothing_is_published_while_undecided(self):
+        # arg1 is not known yet; arg2 may still turn out true at 0.
+        c = run([([], None)], [([Interval(1, 2)], 10)], closed(1, 4))
         self.assertEqual(c.received, [])
         self.assertEqual(c.horizons, [])
+
+    def test_decided_part_is_published_before_every_window_is_known(self):
+        # arg1 known up to 3 only, but true on [0, 3): t in [0, 2) reaches
+        # arg2 on [1, 2). On [2, 6) arg2 is false on all of [t, t + 4].
+        c = run([([Interval(0, 5)], 3)], [([Interval(1, 2)], 10)], closed(0, 4))
+        self.assertEqual(c.received, [Interval(0, 2)])
+        self.assertEqual(c.horizons, [6.0])
+
+    def test_false_arg1_decides_before_arg2_is_known(self):
+        # Without 0 in the window, arg1 false at t makes the signal false.
+        c = run([([], 5)], [([], None)], closed(1, 3))
+        self.assertEqual(c.received, [])
+        self.assertEqual(c.horizons, [5.0])
+
+    def test_true_arg2_decides_before_the_window_is_known(self):
+        # arg2 true at t makes the signal true when 0 is in the window.
+        c = run([([], None)], [([Interval(0, 4)], 4)], closed(0, 10))
+        self.assertEqual(c.received, [Interval(0, 4)])
+        self.assertEqual(c.horizons, [4.0])
 
     def test_known_part_grows_with_both_horizons(self):
         c = run([([Interval(0, 4)], 4), ([Interval(4, 9)], 9)],
@@ -189,7 +229,7 @@ class TestConsume(unittest.TestCase):
                          closed(1, 2))
         m.add(RecordingConsumer(log))
         m.consume(tick())
-        self.assertEqual(log, [('interval', closed(2, 4)), ('horizon', 8.0)])
+        self.assertEqual(log, [('interval', closed(2, 4)), ('horizon', 10.0)])
 
     def test_matches_definition_on_random_signals(self):
         rng = random.Random(0)
@@ -217,7 +257,7 @@ class TestConsume(unittest.TestCase):
                 steps.append((batch, horizon))
             return steps
 
-        produced = 0
+        produced = ahead = 0
         for _ in range(300):
             s1, s2 = random_steps(), random_steps()
             a = rng.choice([0, 0.5, 1])
@@ -233,33 +273,35 @@ class TestConsume(unittest.TestCase):
             for p, q in zip(c.received, c.received[1:]):
                 self.assertTrue(p.is_before(q))
             self.assertEqual(c.horizons, sorted(set(c.horizons)))
-            known = min(s1[-1][1], s2[-1][1]) - b
+            h1, h2 = s1[-1][1], s2[-1][1]
+            known = min(h1, h2) - b
+            decided = c.horizons[-1] if c.horizons else 0.0
+            # Every window is known below min(h1, h2) - b.
             if known > 0:
-                self.assertEqual(c.horizons[-1], known)
+                self.assertGreaterEqual(decided, known)
+            ahead += decided > max(known, 0)
 
             phi = merged([i for batch, _ in s1 for i in batch])
             psi = merged([i for batch, _ in s2 for i in batch])
+            # Below the horizon, the published value is the one of the
+            # definition whatever the arguments are after their horizons.
+            completions = [(phi, psi), (completed(phi, h1), completed(psi, h2))]
             points = {0.0}
             for i in phi + psi:
                 for v in (i.start, i.end):
-                    points |= {v, v - a, v - b, v - (a + b) / 2}
+                    if v is not None:
+                        points |= {v, v - a, v - b, v - (a + b) / 2}
             for k in range(41):
-                points.add(max(known, 0) * k / 40)
+                points.add(decided * k / 40)
             for t in points:
-                if t < 0 or t >= known:
+                if t < 0 or t >= decided:
                     continue
-                # arg2 at some t' in t + i_arg, arg1 on [t, t').
-                expected = i_arg.contains(0) and any(j.contains(t) for j in psi)
-                around = [i for i in phi if i.contains(t)]
-                if around:
-                    i = around[0]
-                    reach = Interval(i.start, i.end, left_open=i.left_open, right_open=False)
-                    reachable = i_arg.shift(t).intersection(reach)
-                    expected = expected or (reachable is not None and any(
-                        reachable.intersect(j) for j in psi))
-                self.assertEqual(any(i.contains(t) for i in c.received), expected,
-                                 (t, s1, s2, i_arg))
+                published = any(i.contains(t) for i in c.received)
+                for f1, f2 in completions:
+                    self.assertEqual(published, until(f1, f2, i_arg, t), (t, s1, s2, i_arg))
         self.assertGreater(produced, 100)
+        # The horizon often gets past min(h1, h2) - b.
+        self.assertGreater(ahead, 100)
 
 
 class TestWithMonitors(unittest.TestCase):
@@ -286,7 +328,9 @@ class TestWithMonitors(unittest.TestCase):
         m.add(c)
         for t in (2, 5):
             m.consume(tick(t))
-        self.assertEqual(merged(c.received), [Interval(0, 4)])
+        # arg2 alone decides: no need to wait for the window to be known.
+        self.assertEqual(merged(c.received), [Interval(0, 5)])
+        self.assertEqual(c.horizons, [2.0, 5.0])
 
     def test_false_until_is_false(self):
         m = UntilMonitor(FalseMonitor(), TrueMonitor(), Interval(0, 1, left_open=True,
@@ -296,7 +340,8 @@ class TestWithMonitors(unittest.TestCase):
         for t in (2, 5):
             m.consume(tick(t))
         self.assertEqual(c.received, [])
-        self.assertEqual(c.horizons, [1.0, 4.0])
+        # arg1 false decides at once: no need to wait for the window.
+        self.assertEqual(c.horizons, [2.0, 5.0])
 
     def test_until_false_is_false(self):
         m = UntilMonitor(TrueMonitor(), FalseMonitor(), closed(0, 1))

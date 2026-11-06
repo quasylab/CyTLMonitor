@@ -14,6 +14,7 @@ from cytlmonitor.core.interval import Interval
 from cytlmonitor.monitors.boolean import OrMonitor
 from cytlmonitor.events.payload import Payload
 from cytlmonitor.monitors.constants import TrueMonitor
+from cytlmonitor.monitors.temporal import EventuallyMonitor
 
 
 class RecordingConsumer(BooleanSignalConsumer):
@@ -52,6 +53,21 @@ class Replay(EventMonitor):
             self.publish(i)
         if horizon is not None:
             self.publish_horizon(horizon)
+
+
+def settled(signal, horizon, dominant, h):
+    """Reference: how far past ``h`` an operand with the given full
+    ``signal`` and ``horizon`` decides the result alone."""
+    if horizon <= h:
+        return h
+    window = Interval(h, horizon)
+    parts = BooleanSignal([p for p in (i.intersection(window) for i in signal) if p is not None])
+    first = next(iter(parts), None)
+    if dominant:
+        if first is not None and first.start == h and not first.left_open:
+            return first.end
+        return h
+    return horizon if first is None else first.start
 
 
 def tick(t=0):
@@ -110,9 +126,15 @@ class TestConsume(unittest.TestCase):
         self.assertEqual(c.horizons, [3.0])
 
     def test_union_is_published_up_to_the_smaller_horizon(self):
-        c = run([([Interval(0, 2), Interval(6, 8)], 8)], [([Interval(3, 4)], 7)])
-        self.assertEqual(c.received, [Interval(0, 2), Interval(3, 4), Interval(6, 7)])
+        # m1 is false at 7, so the result there depends on m2.
+        c = run([([Interval(0, 2), Interval(5, 6)], 8)], [([Interval(3, 4)], 7)])
+        self.assertEqual(c.received, [Interval(0, 2), Interval(3, 4), Interval(5, 6)])
         self.assertEqual(c.horizons, [7.0])
+
+    def test_union_goes_past_the_smaller_horizon_while_m1_is_true(self):
+        c = run([([Interval(0, 2), Interval(6, 8)], 9)], [([Interval(3, 4)], 7)])
+        self.assertEqual(c.received, [Interval(0, 2), Interval(3, 4), Interval(6, 8)])
+        self.assertEqual(c.horizons, [8.0])
 
     def test_overlapping_intervals_are_merged(self):
         c = run([([Interval(0, 3)], 6)], [([Interval(2, 5)], 6)])
@@ -124,15 +146,26 @@ class TestConsume(unittest.TestCase):
         self.assertEqual(c.received, [Interval(0, 5)])
 
     def test_nothing_is_published_until_both_horizons_move(self):
-        c = run([([Interval(0, 4)], 4)], [([], None)])
+        c = run([([], 4)], [([], None)])
         self.assertEqual(c.received, [])
         self.assertEqual(c.horizons, [])
+
+    def test_true_operand_is_published_before_the_other_moves(self):
+        c = run([([Interval(0, 4)], 4)], [([], None)])
+        self.assertEqual(c.received, [Interval(0, 4)])
+        self.assertEqual(c.horizons, [4.0])
+
+    def test_true_second_operand_is_published_before_the_first_moves(self):
+        c = run([([], None)], [([Interval(0, 4)], 4)])
+        self.assertEqual(c.received, [Interval(0, 4)])
+        self.assertEqual(c.horizons, [4.0])
 
     def test_interval_split_across_horizons(self):
         c = run([([Interval(0, 10)], 10), ([], None)],
                 [([], 4), ([], 10)])
-        self.assertEqual(c.received, [Interval(0, 4), Interval(4, 10)])
-        self.assertEqual(c.horizons, [4.0, 10.0])
+        # m1 is true on all of [0, 10), which decides the result at once.
+        self.assertEqual(c.received, [Interval(0, 10)])
+        self.assertEqual(c.horizons, [10.0])
 
     def test_both_false_publishes_only_horizons(self):
         c = run([([], 5)], [([], 5)])
@@ -197,7 +230,9 @@ class TestConsume(unittest.TestCase):
             c = run(s1, s2)
             sig1 = BooleanSignal([i for batch, _ in s1 for i in batch])
             sig2 = BooleanSignal([i for batch, _ in s2 for i in batch])
-            known = min(s1[-1][1], s2[-1][1])
+            h1, h2 = s1[-1][1], s2[-1][1]
+            known = max(settled(sig1, h1, True, min(h1, h2)),
+                        settled(sig2, h2, True, min(h1, h2)))
 
             for a, b in zip(c.received, c.received[1:]):
                 self.assertTrue(a.is_before(b))
@@ -221,6 +256,16 @@ class TestConsume(unittest.TestCase):
 
 
 class TestWithMonitors(unittest.TestCase):
+
+    def test_true_operand_is_not_held_back_by_a_lagging_eventually(self):
+        lagging = EventuallyMonitor(FalseMonitor(), Interval(0, 100))
+        m = OrMonitor(lagging, TrueMonitor())
+        c = RecordingConsumer()
+        m.add(c)
+        for t in (1, 3):
+            m.consume(tick(t))
+        self.assertEqual(c.received, [Interval(0, 1), Interval(1, 3)])
+        self.assertEqual(c.horizons, [1.0, 3.0])
 
     def test_true_or_false_is_true(self):
         m = OrMonitor(TrueMonitor(), FalseMonitor())

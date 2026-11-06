@@ -55,6 +55,21 @@ class Replay(EventMonitor):
             self.publish_horizon(horizon)
 
 
+def settled(signal, horizon, dominant, h):
+    """Reference: how far past ``h`` an operand with the given full
+    ``signal`` and ``horizon`` decides the result alone."""
+    if horizon <= h:
+        return h
+    window = Interval(h, horizon)
+    parts = BooleanSignal([p for p in (i.intersection(window) for i in signal) if p is not None])
+    first = next(iter(parts), None)
+    if dominant:
+        if first is not None and first.start == h and not first.left_open:
+            return first.end
+        return h
+    return horizon if first is None else first.start
+
+
 def tick(t=0):
     return Event(t, Payload({}))
 
@@ -129,9 +144,19 @@ class TestConsume(unittest.TestCase):
         self.assertEqual(c.received, [Interval(0, 1), Interval(3, 5, left_open=True)])
 
     def test_nothing_is_published_until_both_horizons_move(self):
-        c = run([([], 4)], [([], None)])
+        c = run([([Interval(0, 4)], 4)], [([], None)])
         self.assertEqual(c.received, [])
         self.assertEqual(c.horizons, [])
+
+    def test_false_premise_is_published_before_the_conclusion_moves(self):
+        c = run([([Interval(2, 3)], 4)], [([], None)])
+        self.assertEqual(c.received, [Interval(0, 2)])
+        self.assertEqual(c.horizons, [2.0])
+
+    def test_true_conclusion_is_published_before_the_premise_moves(self):
+        c = run([([], None)], [([Interval(0, 3)], 4)])
+        self.assertEqual(c.received, [Interval(0, 3)])
+        self.assertEqual(c.horizons, [3.0])
 
     def test_known_part_grows_step_by_step(self):
         c = run([([Interval(1, 10)], 10), ([], None)],
@@ -190,7 +215,9 @@ class TestConsume(unittest.TestCase):
             c = run(s1, s2)
             sig1 = BooleanSignal([i for batch, _ in s1 for i in batch])
             sig2 = BooleanSignal([i for batch, _ in s2 for i in batch])
-            known = min(s1[-1][1], s2[-1][1])
+            h1, h2 = s1[-1][1], s2[-1][1]
+            known = max(settled(sig1, h1, False, min(h1, h2)),
+                        settled(sig2, h2, True, min(h1, h2)))
 
             for a, b in zip(c.received, c.received[1:]):
                 self.assertTrue(a.is_before(b))

@@ -15,12 +15,18 @@ installed in each (a :class:`~cytlmonitor.monitors.base.MonitorInput`)
 collects the intervals and horizons it publishes.
 
 A monitor whose horizon is ``h`` is known on ``[0, h)``, so the combined
-signal is known on ``[0, min(h1, h2))``. Whenever that grows, the two
-signals restricted to the newly known part are combined by
-:meth:`BinaryMonitor._combine`, which is also given that part, and the
-resulting intervals are published,
-followed by the new horizon. Intervals lying entirely within the known
-part are then discarded.
+signal is known on ``[0, min(h1, h2))``. It is also known beyond, as far as
+the operand known further keeps its *dominant* value, the one deciding the
+result on its own (false for a conjunction, true for a disjunction, a false
+premise or a true conclusion for an implication): ``False and m2`` is
+false whatever ``m2`` turns out to be. The result is thus not held back by
+an operand that lags behind, such as an eventually with a wide window.
+
+Whenever the known part grows, the two signals restricted to the newly
+known part are combined by :meth:`BinaryMonitor._combine`, which is also
+given that part, and the resulting intervals are published, followed by
+the new horizon. Intervals lying entirely within the known part are then
+discarded; whatever an operand publishes later within it is ignored.
 
 This relies on a monitor never publishing, after horizon ``h``, an
 interval starting before ``h``.
@@ -73,6 +79,7 @@ starting before ``h``.
 from __future__ import annotations
 
 from abc import abstractmethod
+from typing import Optional, Tuple
 
 from cytlmonitor.core.boolean_signal import BooleanSignal
 from cytlmonitor.core.interval import Interval
@@ -84,7 +91,7 @@ class BinaryMonitor(EventMonitor):
     """An EventMonitor publishing the boolean signals of ``m1`` and ``m2``
     combined by :meth:`_combine`."""
 
-    __slots__ = ('_m1', '_m2', '_left', '_right', '_horizon')
+    __slots__ = ('_m1', '_m2', '_left', '_right', '_horizon', '_consuming')
 
     def __init__(self, m1: EventMonitor, m2: EventMonitor):
         super().__init__()
@@ -97,6 +104,9 @@ class BinaryMonitor(EventMonitor):
         self._right = MonitorInput(self)
         # The output is published on [0, horizon).
         self._horizon = 0.0
+        # True while an event is passed to m1 and m2: advancing waits until
+        # both have processed it.
+        self._consuming = False
         m1.add(self._left)
         m2.add(self._right)
 
@@ -113,22 +123,66 @@ class BinaryMonitor(EventMonitor):
     def consume(self, e: Event) -> None:
         """Pass ``e`` to ``m1`` and ``m2``; the intervals and horizons they
         publish are combined and published. When ``m1`` and ``m2`` are the
-        same object, the event is passed only once."""
-        self._m1.consume(e)
-        if self._m2 is not self._m1:
-            self._m2.consume(e)
+        same object, the event is passed only once. The result is advanced
+        once both have processed ``e``, so that it is published in as few
+        pieces as possible."""
+        self._consuming = True
+        try:
+            self._m1.consume(e)
+            if self._m2 is not self._m1:
+                self._m2.consume(e)
+        finally:
+            self._consuming = False
+        self._advance()
+
+    #: For ``m1`` and ``m2``, the value that alone determines the result
+    #: (e.g. false for a conjunction), or None if there is none.
+    _dominant: Tuple[Optional[bool], Optional[bool]] = (None, None)
 
     @staticmethod
     @abstractmethod
     def _combine(s1: BooleanSignal, s2: BooleanSignal, window: Interval) -> BooleanSignal:
         """Combine the signals of ``m1`` and ``m2``, both restricted to the
         newly known part ``window``. The result must lie within
-        ``window``."""
+        ``window``. Where one of the two signals takes its dominant value,
+        the result must not depend on the other one, which may still be
+        unknown there."""
+
+    @staticmethod
+    def _settled(lead: MonitorInput, dominant: Optional[bool], h: float) -> float:
+        """How far past ``h`` the result is decided by ``lead`` alone: the
+        end of the stretch from ``h`` where ``lead`` keeps its ``dominant``
+        value, without going past the horizon of ``lead``."""
+        if dominant is None or lead.horizon <= h:
+            return h
+        window = Interval(h, lead.horizon)
+        # The intervals of ``lead`` are ordered, so the scan stops at the
+        # first one deciding the answer.
+        frontier, covered = h, False
+        for i in lead.intervals:
+            part = i.intersection(window)
+            if part is None:
+                if i.start >= lead.horizon:
+                    break
+                continue
+            if not dominant:
+                return part.start
+            if part.start > frontier or (part.start == frontier and part.left_open
+                                         and not covered):
+                break
+            if part.end >= frontier:
+                frontier, covered = part.end, not part.right_open
+        return frontier if dominant else lead.horizon
 
     def _advance(self) -> None:
-        """Publish the combined signal over the newly known part
-        ``[horizon, min(h1, h2))``, then the new horizon."""
-        target = min(self._left.horizon, self._right.horizon)
+        """Publish the combined signal over the newly known part, then the
+        new horizon. The known part extends to ``min(h1, h2)`` and, past it,
+        as long as the operand known further keeps its dominant value."""
+        if self._consuming:
+            return
+        h = max(self._horizon, min(self._left.horizon, self._right.horizon))
+        target = max(self._settled(self._left, self._dominant[0], h),
+                     self._settled(self._right, self._dominant[1], h))
         if target <= self._horizon:
             return
         window = Interval(self._horizon, target)
@@ -147,6 +201,7 @@ class AndMonitor(BinaryMonitor):
     ``m1`` and ``m2``."""
 
     __slots__ = ()
+    _dominant = (False, False)
 
     @staticmethod
     def _combine(s1: BooleanSignal, s2: BooleanSignal, window: Interval) -> BooleanSignal:
@@ -158,6 +213,7 @@ class OrMonitor(BinaryMonitor):
     ``m1`` and ``m2``."""
 
     __slots__ = ()
+    _dominant = (True, True)
 
     @staticmethod
     def _combine(s1: BooleanSignal, s2: BooleanSignal, window: Interval) -> BooleanSignal:
@@ -169,6 +225,7 @@ class ImplyMonitor(BinaryMonitor):
     of ``m1`` to that of ``m2``."""
 
     __slots__ = ()
+    _dominant = (False, True)
 
     @staticmethod
     def _combine(s1: BooleanSignal, s2: BooleanSignal, window: Interval) -> BooleanSignal:

@@ -73,6 +73,32 @@ def merged(intervals):
     return list(BooleanSignal(intervals))
 
 
+def completed(intervals, horizon):
+    """``intervals`` with what follows ``horizon`` taken as true."""
+    return list(BooleanSignal(intervals).union(BooleanSignal([Interval(horizon)])))
+
+
+def since(phi, psi, i_arg, a, b, t):
+    """The definition: arg2 at some t' with t - t' in i_arg, or t' < t at
+    the open end of an interval of arg2; arg1 on (t', t]."""
+    if b is None:
+        back = Interval(-1e9, t - a, right_open=i_arg.left_open)
+    else:
+        back = Interval(t - b, t - a, left_open=i_arg.right_open,
+                        right_open=i_arg.left_open)
+    expected = i_arg.contains(0) and any(j.contains(t) for j in psi)
+    around = [i for i in phi if i.contains(t)]
+    if around:
+        i = around[0]
+        reach = Interval(i.start, i.end, left_open=False, right_open=i.right_open)
+        reachable = back.intersection(reach)
+        if reachable is not None:
+            expected = expected or any(reachable.intersect(j) for j in psi) or any(
+                j.end is not None and j.right_open and j.end < t
+                and reachable.contains(j.end) for j in psi)
+    return expected
+
+
 class TestConstruction(unittest.TestCase):
 
     def test_is_an_event_monitor(self):
@@ -130,7 +156,31 @@ class TestConsume(unittest.TestCase):
         # and in [1, 2], 2 being the closing end of arg2, so t in [3, 5].
         c = run([([Interval(1, 8)], 10)], [([Interval(1, 2)], 10)], closed(2, 3))
         self.assertEqual(merged(c.received), [closed(3, 5)])
-        self.assertEqual(c.horizons, [10.0])
+        # For t < 12, [t - 3, t - 2] lies below 10, where arg2 is known
+        # false: the signal is false there whatever comes next.
+        self.assertEqual(c.horizons, [12.0])
+
+    def test_false_arg1_decides_before_arg2_is_known(self):
+        # arg1 false on [0, 5): (t', t] with t' <= t - 1 meets it for every
+        # t < 6, so the signal is false there whatever arg2 is.
+        c = run([([], 5)], [([], None)], closed(1, 2))
+        self.assertEqual(c.received, [])
+        self.assertEqual(c.horizons, [6.0])
+
+    def test_witness_decides_before_arg2_is_known_further(self):
+        # arg2 true at 0, arg1 true on [0, 6): true on [1, 3] (t' = 0)
+        # however arg2 goes on after 1, its horizon. The point 3 waits for
+        # the next horizon, as the known part is [0, 3).
+        c = run([([Interval(0, 6)], 6)], [([closed(0, 0)], 1)], closed(1, 3))
+        self.assertEqual(merged(c.received), [Interval(1, 3)])
+        self.assertEqual(c.horizons, [3.0])
+
+    def test_false_arg2_decides_beyond_both_horizons(self):
+        # arg2 false on [0, 4): with t' in [t - 4, t - 3], the signal is
+        # false up to 4 + 3 whatever the arguments do.
+        c = run([([], None)], [([], 4)], closed(3, 4))
+        self.assertEqual(c.received, [])
+        self.assertEqual(c.horizons, [7.0])
 
     def test_no_lag_behind_the_arguments(self):
         c = run([([Interval(0, 4)], 4)], [([Interval(0, 4)], 4)], closed(0, 1))
@@ -239,7 +289,7 @@ class TestConsume(unittest.TestCase):
                          closed(2, 3))
         m.add(RecordingConsumer(log))
         m.consume(tick())
-        self.assertEqual(log, [('interval', closed(3, 5)), ('horizon', 10.0)])
+        self.assertEqual(log, [('interval', closed(3, 5)), ('horizon', 12.0)])
 
     def test_matches_definition_on_random_signals(self):
         rng = random.Random(0)
@@ -267,7 +317,7 @@ class TestConsume(unittest.TestCase):
                 steps.append((batch, horizon))
             return steps
 
-        produced = 0
+        produced = ahead = 0
         for _ in range(400):
             s1, s2 = random_steps(), random_steps()
             a = rng.choice([0, 0.5, 1])
@@ -287,43 +337,38 @@ class TestConsume(unittest.TestCase):
             for p, q in zip(c.received, c.received[1:]):
                 self.assertTrue(p.is_before(q))
             self.assertEqual(c.horizons, sorted(set(c.horizons)))
-            known = min(s1[-1][1], s2[-1][1])
+            h1, h2 = s1[-1][1], s2[-1][1]
+            known = min(h1, h2)
+            decided = c.horizons[-1] if c.horizons else 0.0
+            # Both arguments are known below min(h1, h2).
             if known > 0:
-                self.assertEqual(c.horizons[-1], known)
+                self.assertGreaterEqual(decided, known)
+            ahead += decided > known
 
             phi = merged([i for batch, _ in s1 for i in batch])
             psi = merged([i for batch, _ in s2 for i in batch])
+            # Below the horizon, the published value is the one of the
+            # definition whatever the arguments are after their horizons.
+            completions = [(phi, psi), (completed(phi, h1), completed(psi, h2))]
             points = {0.0}
             for i in phi + psi:
                 for v in (i.start, i.end):
+                    if v is None:
+                        continue
                     points |= {v, v + a}
                     if b is not None:
                         points |= {v + b, v + (a + b) / 2}
             for k in range(41):
-                points.add(known * k / 40)
+                points.add(decided * k / 40)
             for t in points:
-                if t < 0 or t >= known:
+                if t < 0 or t >= decided:
                     continue
-                if b is None:
-                    back = Interval(-1e9, t - a, right_open=i_arg.left_open)
-                else:
-                    back = Interval(t - b, t - a, left_open=i_arg.right_open,
-                                    right_open=i_arg.left_open)
-                # arg2 at some t' with t - t' in i_arg, or t' < t at the
-                # open end of an interval of arg2; arg1 on (t', t].
-                expected = i_arg.contains(0) and any(j.contains(t) for j in psi)
-                around = [i for i in phi if i.contains(t)]
-                if around:
-                    i = around[0]
-                    reach = Interval(i.start, i.end, left_open=False, right_open=i.right_open)
-                    reachable = back.intersection(reach)
-                    if reachable is not None:
-                        expected = expected or any(reachable.intersect(j) for j in psi) or any(
-                            j.end is not None and j.right_open and j.end < t
-                            and reachable.contains(j.end) for j in psi)
-                self.assertEqual(any(i.contains(t) for i in c.received), expected,
-                                 (t, s1, s2, i_arg))
+                published = any(i.contains(t) for i in c.received)
+                for f1, f2 in completions:
+                    self.assertEqual(published, since(f1, f2, i_arg, a, b, t), (t, s1, s2, i_arg))
         self.assertGreater(produced, 100)
+        # The horizon often gets past min(h1, h2).
+        self.assertGreater(ahead, 100)
 
 
 class TestBuffers(unittest.TestCase):
@@ -343,7 +388,8 @@ class TestBuffers(unittest.TestCase):
             m.consume(tick(t))
         self.assertLessEqual(len(m._left.intervals), 2)
         self.assertLessEqual(len(m._right.intervals), 4)
-        self.assertEqual(merged(c.received), [Interval(0, 499)])
+        # On [499, 499.5) Blink alone decides, 0 being in the window.
+        self.assertEqual(merged(c.received), [Interval(0, 499.5)])
 
 
 class TestWithMonitors(unittest.TestCase):
