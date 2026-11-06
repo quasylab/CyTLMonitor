@@ -68,7 +68,9 @@ scan rule, it does not.
 
 **Plotting.** With `--plot`, each script stacks a `PlotSignalConsumer` or
 `PlotBooleanSignalConsumer` per signal; the dashed vertical line is the
-horizon. The consumers only redraw while the stream is processed when
+horizon. A boolean signal is drawn at 1 where it is true and at 0 where it is
+false, with a dot at each end of an interval showing the value there: at 1
+when the end is closed, at 0 when it is open. The consumers only redraw while the stream is processed when
 Matplotlib is in interactive mode (`matplotlib.pyplot.ion()`); otherwise the
 figure is drawn once, at the end.
 

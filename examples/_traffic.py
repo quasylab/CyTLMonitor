@@ -2,7 +2,7 @@
 Helpers shared by the examples: synthetic traffic, windowed counts, and a
 consumer printing the alarms raised by a monitor.
 
-The examples feed a monitor with :class:`~cytlmonitor.event.Event`
+The examples feed a monitor with :class:`~cytlmonitor.events.event.Event`
 instances whose payload has the same fields as the packets read by
 ``cytl_capture.parse_packet`` (``size``, ``protocol``, ``tcp_syn``,
 ``tcp_ack``, ``dst_port``, ...), so the same monitors can be used on real

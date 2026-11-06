@@ -19,8 +19,14 @@ linearly with the length of the stream, and memory stays bounded.
 ## Contents of the repository
 
 ```text
-cytlmonitor/        the library
-  tests/            unit tests (pytest), including smoke tests of the examples
+cytlmonitor/        the library (every public class is re-exported by the package)
+  core/             intervals, polynomials, segments, signals and boolean signals
+  events/           events, payloads, event sequences, stream consumers and relations
+  consumers/        signal consumers; plot/ draws signals live with matplotlib
+  expressions/      online quantitative expressions (arithmetic, shift, windows)
+  monitors/         online boolean monitors (constants, connectives, atomic, temporal)
+  offline/          measures and offline evaluation over an event sequence
+  tests/            unit tests (pytest), mirroring the subpackages, plus smoke tests of the examples
 examples/           runnable examples on synthetic traffic, and a scalability benchmark
 past/               an earlier prototype: a PyQt5 desktop application, kept for reference
 requirements.txt

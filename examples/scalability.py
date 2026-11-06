@@ -226,7 +226,7 @@ def plot(results: Dict[str, List[Dict[str, float]]], memory: bool) -> None:
     """Time per event against the number of events, one line per monitor:
     a flat line is linear scaling."""
     import matplotlib.pyplot as plt
-    from cytlmonitor.plot_style import THEMES
+    from cytlmonitor.consumers.plot.style import THEMES
 
     theme = THEMES[False]
     # Categorical slots 1-5 of the reference palette, in fixed order. Three
