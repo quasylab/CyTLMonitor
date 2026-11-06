@@ -237,5 +237,64 @@ class TestComposition(unittest.TestCase):
         ])
 
 
+
+def assert_contiguous(test, segments):
+    """The segments start at 0 and each continues where the previous ends,
+    with exactly one of the two containing the shared point."""
+    test.assertEqual(segments[0].interval.start, 0.0)
+    test.assertFalse(segments[0].interval.left_open)
+    for a, b in zip(segments, segments[1:]):
+        test.assertEqual(a.interval.end, b.interval.start, (a, b))
+        test.assertNotEqual(a.interval.right_open, b.interval.left_open, (a, b))
+
+
+class TestRounding(unittest.TestCase):
+    """Shifting adds ``t`` to both ends of each interval, and rounding can
+    make a very short interval empty."""
+
+    sliver = Interval(0.3, 0.30000000000000004, left_open=True)
+
+    def test_interval_emptied_by_rounding_is_dropped(self):
+        out = run(10, [[segment(Interval(0, 0.3, right_open=False), 1),
+                        segment(self.sliver, 2),
+                        segment(Interval(0.30000000000000004, 1), 3)]])
+        self.assertEqual(as_tuples(out), [
+            (Interval(0, 10), Polynomial([0])),
+            (Interval(10, 10.3, right_open=False), Polynomial([1]).shift(10)),
+            (Interval(10.3, 11, left_open=True), Polynomial([3]).shift(10)),
+        ])
+
+    def test_neighbours_of_a_dropped_interval_do_not_overlap(self):
+        # Without the sliver, [.., 10.3] and [10.3, ..) would both hold 10.3.
+        out = run(10, [[segment(Interval(0, 0.3, right_open=False), 1)],
+                       [segment(self.sliver, 2)],
+                       [segment(Interval(0.30000000000000004, 1), 3)]])
+        assert_contiguous(self, out)
+
+    def test_point_emptied_by_its_open_neighbour_is_kept_once(self):
+        # [0, 0.3) then the sliver [0.3, 0.30000000000000004) then the rest:
+        # the point 10.3 belongs to the segment after the dropped one.
+        out = run(10, [[segment(Interval(0, 0.3), 1),
+                        segment(Interval(0.3, 0.30000000000000004), 2),
+                        segment(Interval(0.30000000000000004, 1), 3)]])
+        assert_contiguous(self, out)
+        self.assertEqual(out[-1].interval, Interval(10.3, 11))
+
+    def test_window_sum_over_tenths_of_a_second(self):
+        # Events every 0.1 s make the window sum publish very short
+        # segments; shifting them by 10 used to raise a ValueError.
+        x = ShiftExpression(SumWindowExpression(lambda e: 1.0, 0, 10), 10)
+        c = RecordingConsumer()
+        x.add(c)
+        for k in range(3000):
+            x.consume(tick(k / 10))
+        assert_contiguous(self, c.received)
+        self.assertGreater(c.received[-1].interval.end, 299)
+        # With an event every 0.1 s, a 10 s window holds 100 or 101.
+        for s in c.received:
+            if s.interval.start >= 10:
+                self.assertIn(s.polynomial.coefficients[0], (100.0, 101.0), s)
+
+
 if __name__ == '__main__':
     unittest.main()

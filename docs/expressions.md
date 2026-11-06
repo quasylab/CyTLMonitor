@@ -126,6 +126,13 @@ as soon as the events up to `t` have been seen:
 During the first `d` time units the result is 0, because there is no full
 window yet. Here the volume over `[-0.5, 1.5]` (140) reads 0 at `t = 1.5`.
 
+Shifting adds `t` to both ends of every interval, and with floats a very
+short interval may round to nothing: `0.3` and `0.30000000000000004` are both
+`10.3` once 10 is added. `ShiftExpression` drops such a segment, and makes the
+next one start exactly where the previous one ends, so the published segments
+stay contiguous. The value at that shared point is then the earlier
+segment's.
+
 ## Arithmetic: `SumExpression`, `DifferenceExpression`, `ProductExpression`, `DivisionExpression`
 
 Point-wise operations on the signals of two expressions, `arg1 op arg2`.

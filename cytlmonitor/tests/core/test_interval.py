@@ -240,6 +240,17 @@ class TestComplement(unittest.TestCase):
 
 class TestShift(unittest.TestCase):
 
+    def test_interval_emptied_by_rounding_gives_none(self):
+        # 0.3 and 0.30000000000000004 are both 10.3 once 10 is added.
+        sliver = Interval(0.3, 0.30000000000000004, left_open=True)
+        self.assertEqual(sliver.start + 10, sliver.end + 10)
+        self.assertIsNone(sliver.shift(10))
+        self.assertIsNone(Interval(0.3, 0.30000000000000004).shift(10))
+
+    def test_closed_interval_reduced_by_rounding_to_a_point(self):
+        closed = Interval(0.3, 0.30000000000000004, right_open=False)
+        self.assertEqual(closed.shift(10), Interval.point(10.3))
+
     def test_shift_by_zero_returns_equal_interval(self):
         original = Interval(5, 10, right_open=True)
         self.assertEqual(original.shift(0), original)

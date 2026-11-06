@@ -119,16 +119,22 @@ class Interval:
 
         If the shifted ``start`` would be negative, only the positive part
         of the shifted interval (its intersection with ``[0, +inf)``) is
-        returned. ``None`` is returned only when the whole shifted interval
+        returned. ``None`` is returned when the whole shifted interval
         would be negative (including when it ends exactly at 0 but
-        excludes that point, i.e. ``self`` is right-open). Neither can
-        happen when ``t`` is non-negative.
+        excludes that point, i.e. ``self`` is right-open).
+
+        ``None`` is also returned when rounding leaves nothing of the
+        interval: with floats, ``start + t`` and ``end + t`` may be equal
+        even if ``start < end``, as for ``(0.3, 0.30000000000000004)``
+        shifted by 10. A closed interval is then reduced to a point.
         """
         t = float(t)
         new_start = self.start + t
         new_end = None if self.end is None else self.end + t
 
         if new_start >= 0:
+            if new_end == new_start and (self.left_open or self.right_open):
+                return None
             return Interval(new_start, new_end, left_open=self.left_open, right_open=self.right_open)
         if new_end is not None and new_end < 0:
             return None

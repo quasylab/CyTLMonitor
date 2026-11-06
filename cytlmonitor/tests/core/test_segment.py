@@ -183,6 +183,10 @@ class TestShift:
         segment = Segment(Interval(5, 10, right_open=True), Polynomial([1]))
         assert segment.shift(-11) is None
 
+    def test_none_when_rounding_empties_the_interval(self):
+        segment = Segment(Interval(0.3, 0.30000000000000004, left_open=True), Polynomial([1]))
+        assert segment.shift(10) is None
+
     def test_back_then_forward_is_identity_when_no_clipping(self):
         segment = Segment(Interval(5, 10, right_open=True), Polynomial([1, 2]))
         assert segment.shift(-2).shift(2) == segment
