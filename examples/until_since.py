@@ -23,8 +23,10 @@ The traffic has a first attack at 10 s that ends with a successful login
 at 19 s, a second attack at 40 s that never gets in, and a legitimate
 login at 70 s.
 
-``breach`` looks 30 s ahead, so it is known 30 s later than the others;
-``still failing after login`` only looks back, so it is known at once.
+``breach`` looks 30 s ahead: it is decided at once where there is no brute
+force, but during an attack it can only be decided once a login is seen or
+the 30 s have passed. ``still failing after login`` only looks back, so it
+is known at once.
 
 Shows: UntilMonitor, SinceMonitor, and events with custom fields.
 

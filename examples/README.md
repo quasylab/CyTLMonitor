@@ -44,11 +44,15 @@ build their expressions with small functions, such as `syns()` or
 different: any number can be attached to the same monitor, including monitors
 nested inside another, as `port_scan.py` does to print each part of the rule.
 
-**Monitors that look ahead are known later.** `sustained` in
+**Monitors that look ahead can be known later.** `sustained` in
 `sustained_rate.py` (high for the next 3 s) and `breach` in `until_since.py`
-(a login within the next 30 s) can only be decided once the future they look
-at has been seen, so their horizon lags behind the stream. Monitors that only
-look back, such as `SinceMonitor`, are known as soon as their arguments are.
+(a login within the next 30 s) look at the future, so where what they have
+seen does not decide them yet, their horizon lags behind the stream, by up to
+the length of their window. Monitors publish as soon as the result is decided,
+though: `breach` is false at once where there is no brute force, and
+`sustained` as soon as the rate drops. Monitors that only look back, such as
+`SinceMonitor`, are known as soon as their arguments are, and often before.
+See `docs/streaming-model.md` for when each operator publishes.
 
 **Until, since and windows containing 0.** `UntilMonitor` requires its first
 argument on `[t, t')` and `SinceMonitor` on `(t', t]`, `t'` being when the

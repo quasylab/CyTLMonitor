@@ -27,11 +27,21 @@ cytlmonitor/        the library (every public class is re-exported by the packag
   monitors/         online boolean monitors (constants, connectives, atomic, temporal)
   offline/          measures and offline evaluation over an event sequence
   tests/            unit tests (pytest), mirroring the subpackages, plus smoke tests of the examples
+docs/               documentation: architecture, streaming model, classes, composition
 examples/           runnable examples on synthetic traffic, and a scalability benchmark
 past/               an earlier prototype: a PyQt5 desktop application, kept for reference
 requirements.txt
 LICENSE             Apache License 2.0
 ```
+
+---
+
+## Documentation
+
+The [`docs/`](docs/README.md) folder explains the architecture and the design
+patterns of the library, the streaming model, every class with examples, and
+how to compose monitors and write new operators. Its examples are doctests,
+run with the unit tests.
 
 ---
 
@@ -65,7 +75,8 @@ combined into trees.
 **Monitors** (`EventMonitor`) consume events and publish a boolean signal to the
 `BooleanSignalConsumer`s attached to them, as intervals in time order, together
 with a *horizon*: the signal is known on `[0, horizon)`. Monitors that look into
-the future, such as eventually, are known later than the stream they read.
+the future, such as eventually, can be known later than the stream they read,
+though every part of a result is published as soon as it is decided.
 
 | Monitor | True at `t` when |
 | --- | --- |
