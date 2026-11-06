@@ -13,6 +13,7 @@ flowchart BT
     expressions["<b>expressions</b><br/>StreamExpression and its operators"]
     monitors["<b>monitors</b><br/>EventMonitor and its operators"]
     offline["<b>offline</b><br/>Measure · SignalExpression"]
+    io["<b>io</b><br/>EventReader · JsonEventReader<br/>CsvEventReader · EventFormatError"]
     events --> core
     consumers --> core
     expressions --> events
@@ -20,6 +21,7 @@ flowchart BT
     monitors --> expressions
     monitors --> consumers
     offline --> events
+    io --> events
 ```
 
 | Package | Role |
@@ -30,6 +32,7 @@ flowchart BT
 | `cytlmonitor.expressions` | online operators turning events into a real-valued signal |
 | `cytlmonitor.monitors` | online operators turning events into a boolean signal; atomic monitors compare two expressions |
 | `cytlmonitor.offline` | functions over a complete `EventSequence`, outside the streaming model |
+| `cytlmonitor.io` | readers building events from JSON and CSV files, checking times and field types |
 
 Every public class is re-exported by `cytlmonitor` itself, so
 `from cytlmonitor import AndMonitor` works whatever module the class lives in.
@@ -202,6 +205,7 @@ management once; subclasses supply only what makes them different:
 | `AtomicComparisonMonitor` | the class attributes `_strict` and `_reversed` | `AtomicLeqMonitor`, `AtomicLessMonitor`, `AtomicGeqMonitor`, `AtomicGreaterMonitor` |
 | `EventProcessor` | `process(event)`: the event to forward, or `None` | `EventRelation` and user processors |
 | `EventRelation` | `record(event)`: what to remember about it | `PreviousRelation`, `NextRelation` |
+| `EventReader` | `_records(handle, error)`: the records of a file, as Python values | `JsonEventReader`, `CsvEventReader` |
 
 For instance, the four atomic comparisons are each a few lines declaring two
 booleans; `AndMonitor` is `_combine = intersection` and `_dominant = (False,

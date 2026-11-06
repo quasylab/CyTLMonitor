@@ -7,7 +7,8 @@ The library is organised in subpackages:
 * :mod:`cytlmonitor.consumers`   -- signal consumers (plotting in ``consumers.plot``);
 * :mod:`cytlmonitor.expressions` -- online quantitative expressions;
 * :mod:`cytlmonitor.monitors`    -- online boolean monitors;
-* :mod:`cytlmonitor.offline`     -- offline evaluation over an event sequence.
+* :mod:`cytlmonitor.offline`     -- offline evaluation over an event sequence;
+* :mod:`cytlmonitor.io`          -- readers of event sequences from JSON and CSV files.
 
 Every public class is also re-exported here.
 """
@@ -56,6 +57,7 @@ from cytlmonitor.monitors import (
     TrueMonitor,
     UntilMonitor,
 )
+from cytlmonitor.io import CsvEventReader, EventFormatError, EventReader, JsonEventReader
 from cytlmonitor.offline import Measure, SignalExpression
 
 __all__ = [
@@ -70,4 +72,5 @@ __all__ = [
     'DifferenceExpression', 'DivisionExpression', 'NegationExpression', 'AbsExpression',
     'ShiftExpression', 'SumWindowExpression', 'MaxWindowExpression',
     'MinWindowExpression', 'BooleanSignal', 'Measure', 'SignalExpression',
+    'EventReader', 'JsonEventReader', 'CsvEventReader', 'EventFormatError',
 ]

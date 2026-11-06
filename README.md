@@ -26,6 +26,7 @@ cytlmonitor/        the library (every public class is re-exported by the packag
   expressions/      online quantitative expressions (arithmetic, shift, windows)
   monitors/         online boolean monitors (constants, connectives, atomic, temporal)
   offline/          measures and offline evaluation over an event sequence
+  io/               readers of event sequences from JSON and CSV files
   tests/            unit tests (pytest), mirroring the subpackages, plus smoke tests of the examples
 docs/               documentation: architecture, streaming model, classes, composition
 examples/           runnable examples on synthetic traffic, and a scalability benchmark
@@ -102,6 +103,13 @@ interactive mode. Any number of consumers can be attached to an expression or a
 monitor, including those nested inside another. An expression or a monitor,
 however, must not be the argument of two others: each would pass it every
 event.
+
+**Reading events from files.** `JsonEventReader` and `CsvEventReader` read a
+sequence of events from a JSON file (shaped as `EventSequence`, `Event` and
+`Payload`) or a CSV file (a header naming the time and the fields, then a row
+per event), checking that times are strictly increasing and that each field
+keeps the same type. `read(path)` returns an `EventSequence`; `events(path)`
+yields the events one at a time, to feed a monitor while the file is read.
 
 **Event processors** (`EventProcessor`, `PreviousRelation`, `NextRelation`)
 transform event streams and relate each event to the previous or next one.
