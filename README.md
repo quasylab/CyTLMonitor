@@ -234,3 +234,9 @@ python -m pytest cytlmonitor/tests
 ## License
 
 Apache License 2.0: see `LICENSE`.
+
+## Disclaimer on AI-Assisted Development
+
+This project was developed with partial assistance from Claude, an AI language model by Anthropic. The use of this tool was limited to supporting and accelerating certain aspects of the coding process.
+
+All design decisions, software architecture, structural choices, and technical direction are the sole responsibility of the authors and are grounded in their own expertise and professional judgment. The authors retain full intellectual and creative ownership of this work.
