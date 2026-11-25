@@ -11,7 +11,9 @@ while the stream is processed.
 
 Constant segments are drawn from their two endpoints, the others sampled
 at ``samples`` points; a jump between two segments shows as a vertical
-step. A segment reduced to a single point is drawn as a marker. A
+step. A segment reduced to a single point is drawn as a marker, unless
+it only closes the segment before it, with the same value there: it then
+adds nothing to the line, and dense signals are not covered with markers. A
 right-unbounded segment is drawn ``unbounded_extent`` beyond the furthest
 point plotted so far.
 
@@ -29,7 +31,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from cytlmonitor.consumers.plot.style import Redrawer, create_axes
+from cytlmonitor.consumers.plot.style import Redrawer, create_axes, lazy_line
 from cytlmonitor.consumers.signal_consumer import SignalConsumer
 from cytlmonitor.core.segment import Segment
 
@@ -61,11 +63,11 @@ class PlotSignalConsumer(SignalConsumer):
         self._redrawer = Redrawer(self._figure, refresh_interval)
         axes = self._axes
 
-        self._line, = axes.plot([], [], color=theme['series'], linewidth=2,
-                                solid_joinstyle='round', solid_capstyle='round')
-        self._points, = axes.plot([], [], linestyle='none', marker='o', markersize=8,
-                                  color=theme['series'],
-                                  markeredgecolor=theme['surface'], markeredgewidth=2)
+        self._line = lazy_line(axes, lambda: (self._xs, self._ys), color=theme['series'],
+                               linewidth=2, solid_joinstyle='round', solid_capstyle='round')
+        self._points = lazy_line(axes, lambda: (self._px, self._py), linestyle='none',
+                                 marker='o', markersize=8, color=theme['series'],
+                                 markeredgecolor=theme['surface'], markeredgewidth=2)
 
     @property
     def segments(self) -> List[Segment]:
@@ -91,6 +93,9 @@ class PlotSignalConsumer(SignalConsumer):
 
         if interval.is_point:
             x, y = interval.start, polynomial.evaluate(interval.start)
+            if self._xs and self._xs[-1] == x and self._ys[-1] == y:
+                # The closed end of the line drawn so far.
+                return
             self._px.append(x)
             self._py.append(y)
             self._axes.update_datalim([(x, y)])
@@ -116,8 +121,9 @@ class PlotSignalConsumer(SignalConsumer):
     def update(self) -> None:
         """Update the plot with the segments consumed so far, redrawing it
         if ``refresh_interval`` has passed since the last redraw."""
-        self._line.set_data(self._xs, self._ys)
-        self._points.set_data(self._px, self._py)
+        # The lines read the data when they are drawn or asked for.
+        self._line.invalidate()
+        self._points.invalidate()
         # Lazy: the view is fitted to the data the next time it is drawn.
         self._axes.autoscale()
         self._redrawer.request()

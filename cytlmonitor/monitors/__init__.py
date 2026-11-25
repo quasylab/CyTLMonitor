@@ -16,6 +16,9 @@ from cytlmonitor.monitors.boolean import (
     OrMonitor,
 )
 from cytlmonitor.monitors.constants import FalseMonitor, TrueMonitor
+from cytlmonitor.monitors.filter import FilterMonitor
+from cytlmonitor.monitors.instrumented import InstrumentedMonitor
+from cytlmonitor.monitors.next import NextMonitor
 from cytlmonitor.monitors.temporal import (
     EventuallyMonitor,
     GloballyMonitor,
@@ -27,5 +30,6 @@ __all__ = [
     'EventMonitor', 'MonitorInput', 'TrueMonitor', 'FalseMonitor', 'BinaryMonitor',
     'AndMonitor', 'OrMonitor', 'NotMonitor', 'ImplyMonitor', 'AtomicComparisonMonitor',
     'AtomicLeqMonitor', 'AtomicLessMonitor', 'AtomicGeqMonitor', 'AtomicGreaterMonitor',
-    'EventuallyMonitor', 'GloballyMonitor', 'UntilMonitor', 'SinceMonitor',
+    'EventuallyMonitor', 'GloballyMonitor', 'UntilMonitor', 'SinceMonitor', 'FilterMonitor',
+    'NextMonitor', 'InstrumentedMonitor',
 ]

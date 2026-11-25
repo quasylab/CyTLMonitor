@@ -42,7 +42,7 @@ from __future__ import annotations
 from typing import List, Optional, Tuple
 
 from cytlmonitor.consumers.boolean_signal_consumer import BooleanSignalConsumer
-from cytlmonitor.consumers.plot.style import Redrawer, create_axes
+from cytlmonitor.consumers.plot.style import Redrawer, create_axes, lazy_line
 from cytlmonitor.core.interval import Interval
 
 
@@ -58,7 +58,7 @@ class PlotBooleanSignalConsumer(BooleanSignalConsumer):
 
     __slots__ = ('_intervals', '_horizon', '_unbounded_extent', '_figure', '_axes',
                  '_line', '_dots', '_horizon_line', '_xs', '_ys', '_dx', '_dy',
-                 '_last', '_covered', '_runs', '_x_max', '_redrawer')
+                 '_last', '_covered', '_runs', '_x_max', '_redrawer', '_tail')
 
     def __init__(self, title: str = 'Boolean signal', axes=None,
                  unbounded_extent: float = 1.0, dark: bool = False,
@@ -81,6 +81,8 @@ class PlotBooleanSignalConsumer(BooleanSignalConsumer):
         # continuing one another joined.
         self._runs: List[Interval] = []
         self._x_max: Optional[float] = None
+        # The line and the dots of those intervals, drawn after the others.
+        self._tail: Tuple[List[float], List[float], List[float], List[float]] = ([], [], [], [])
 
         self._figure, self._axes, theme = create_axes(title, axes, dark)
         self._redrawer = Redrawer(self._figure, refresh_interval)
@@ -90,11 +92,13 @@ class PlotBooleanSignalConsumer(BooleanSignalConsumer):
         axes.set_yticks([0, 1])
         axes.set_yticklabels(['false', 'true'])
 
-        self._line, = axes.plot([], [], color=theme['series'], linewidth=2,
-                                solid_capstyle='round', solid_joinstyle='miter')
-        self._dots, = axes.plot([], [], linestyle='none', marker='o', markersize=8,
-                                color=theme['series'],
-                                markeredgecolor=theme['surface'], markeredgewidth=2)
+        self._line = lazy_line(axes, lambda: (self._xs + self._tail[0], self._ys + self._tail[1]),
+                               color=theme['series'], linewidth=2, solid_capstyle='round',
+                               solid_joinstyle='miter')
+        self._dots = lazy_line(axes, lambda: (self._dx + self._tail[2], self._dy + self._tail[3]),
+                               linestyle='none', marker='o', markersize=8,
+                               color=theme['series'], markeredgecolor=theme['surface'],
+                               markeredgewidth=2)
         self._horizon_line = axes.axvline(0.0, color=theme['muted'], linewidth=1.5,
                                           linestyle=(0, (4, 3)), visible=False)
 
@@ -159,8 +163,10 @@ class PlotBooleanSignalConsumer(BooleanSignalConsumer):
                 ys.append(0.0)
             xs.append(h)
             ys.append(0.0)
-        self._line.set_data(self._xs + xs, self._ys + ys)
-        self._dots.set_data(self._dx + dx, self._dy + dy)
+        # The lines read the data when they are drawn or asked for.
+        self._tail = (xs, ys, dx, dy)
+        self._line.invalidate()
+        self._dots.invalidate()
         # The furthest point drawn (NaN, which separates the pieces of the
         # line, is not equal to itself).
         self._grow(max((x for x in xs if x == x), default=0.0))

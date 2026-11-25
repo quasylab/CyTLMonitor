@@ -84,6 +84,73 @@ class TestExamples(unittest.TestCase):
         self.assertEqual(len(alarms['all clear']), 1)
         self.assertEqual(alarms['all clear'][0].start, 83.0)
 
+    def test_worker_performance(self):
+        module = example('worker_performance')
+        result = module.main(quiet=True)
+        stable, unreliable = result['stable'], result['unreliable']
+        # The stable worker satisfies all the properties.
+        for p in ('load', 'completion', 'heavy', 'next job', 'B service', 'recovery'):
+            self.assertEqual(stable[p], [])
+        # Service A always has more arrivals and completions than B, 15 and
+        # 10 per time unit.
+        for m in ('arrivals', 'throughput'):
+            low, high = stable[m]
+            self.assertGreater(low, 0)
+            self.assertLess(high, 10)
+        # When B is overloaded, with 20 arrivals per time unit, it has more
+        # arrivals than A, and, once its jobs are drained, more completions.
+        for m in ('arrivals', 'throughput'):
+            self.assertLess(unreliable[m][0], -4)
+        # Too many running jobs during the overload, too few while nearly
+        # idle, each seen up to 10 + 5 ahead.
+        self.assertEqual(len(unreliable['load']), 2)
+        self.assertAround(unreliable['load'][0], 47, 100, tolerance=2)
+        self.assertAround(unreliable['load'][1], 127, 158, tolerance=2)
+        # Slow and heavy jobs are seen up to 50 (+ 5) ahead of the overload.
+        for p in ('completion', 'heavy'):
+            self.assertEqual(len(unreliable[p]), 1)
+            self.assertAround(unreliable[p][0], 10, 102, tolerance=4)
+        # Jobs stop arriving now and then only while the worker is nearly idle.
+        self.assertTrue(unreliable['next job'])
+        for i in unreliable['next job']:
+            self.assertTrue(139 <= i.start and i.end <= 161)
+        # The next job of B to end is often heavy during its overload.
+        self.assertGreater(len(unreliable['B service']), 10)
+        for i in unreliable['B service']:
+            self.assertTrue(55 <= i.start and i.end <= 105)
+        # The overload lasts 40, longer than RECOVERY = 20: the worker is not
+        # back in range within 20 until 20 before the overload ends.
+        self.assertEqual(len(unreliable['recovery']), 1)
+        self.assertAround(unreliable['recovery'][0], 58, 80, tolerance=2)
+
+    def test_worker_performance_events(self):
+        module = example('worker_performance')
+        events = module.unreliable_worker(until=30)
+        self.assertEqual(events, sorted(events, key=lambda e: e.time))
+        running = set()
+        for e in events:
+            op, session = e.payload['op'], e.payload['session']
+            # Only the START event carries the kind of job.
+            self.assertEqual('type' in e.payload, op == 'START')
+            if op == 'START':
+                self.assertIn(e.payload['type'], ('A', 'B'))
+                self.assertNotIn(session, running)
+                running.add(session)
+            else:
+                self.assertIn(session, running)
+                if op == 'DONE':
+                    running.remove(session)
+
+    def test_worker_performance_plot(self):
+        module = example('worker_performance')
+        saved = []
+        module.show = lambda: saved.append(plt.gcf())
+        try:
+            module.main(plot=True, quiet=True, until=60)
+        finally:
+            plt.close('all')
+        self.assertEqual(len(saved[0].axes), 22)
+
     def test_scalability_runs_and_reports_linear_growth(self):
         module = example('scalability')
         sizes = [2_000, 4_000, 8_000]

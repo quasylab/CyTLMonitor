@@ -38,11 +38,12 @@ from typing import List, Deque
 from cytlmonitor.consumers.boolean_signal_consumer import BooleanSignalConsumer
 from cytlmonitor.core.boolean_signal import BooleanSignal
 from cytlmonitor.core.interval import Interval
+from cytlmonitor.core.node import FormulaNode
 from cytlmonitor.events.consumer import EventConsumer
 from cytlmonitor.events.event import Event
 
 
-class EventMonitor(EventConsumer):
+class EventMonitor(FormulaNode, EventConsumer):
     """An EventConsumer that publishes Intervals to a list of
     BooleanSignalConsumers."""
 
@@ -101,9 +102,15 @@ class MonitorInput(BooleanSignalConsumer):
         self._owner._advance()
 
     def restricted_to(self, window: Interval) -> BooleanSignal:
-        """The part of the collected signal lying within ``window``."""
+        """The part of the collected signal lying within ``window``.
+
+        The intervals are collected in time order, so the scan stops at the
+        first one lying entirely after ``window``.
+        """
         signal = BooleanSignal()
         for i in self.intervals:
+            if window.is_before(i):
+                break
             part = i.intersection(window)
             if part is not None:
                 signal.add(part)

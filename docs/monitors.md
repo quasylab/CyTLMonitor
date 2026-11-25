@@ -256,6 +256,79 @@ with the same false/true bounds as until, often beyond: `m1` false at `t`
 decides it when 0 is not in `I`. Its memory holds the stretch of `m1` still
 true and the intervals of `m2` that can still be reached from it.
 
+## `NextMonitor(beta, a, b, m)`
+
+The next modality `<beta>[a, b] m`: true at `t` when the next event after `t`,
+at some time `t'`, arrives within `[t + a, t + b]`, satisfies the predicate
+`beta`, and finds `m` true at `t'`. `0 <= a < b`, and `b` may be `math.inf`.
+The next event after `t` is the first event with a time strictly greater than
+`t`; when several events share that time, only the first of them, in stream
+order, is tested with `beta`. Every event is passed to `m`.
+
+Below, `b` is set at 3, 7 and 8, and events arrive every second. `<b>[0,1]
+true` holds during the second before each of them. `<b>[0,1] a` also needs `a`
+when that event arrives, which only happens at 7:
+
+```pycon
+>>> b_set = lambda e: e.payload['b']
+>>> run('<b> true', NextMonitor(b_set, 0, 1, TrueMonitor()))
+<b> true     ..#...##...   [2.0,3.0) [6.0,8.0), known up to 11
+>>> run('<b> a', NextMonitor(b_set, 0, 1, Flag('a')))
+<b> a        ......#....   [6.0,7.0), known up to 11
+>>> run('<b>[0.5,1]', NextMonitor(b_set, 0.5, 1, TrueMonitor()))
+<b>[0.5,1]   ..#...##...   [2.0,2.5] [6.0,6.5] [7.0,7.5], known up to 11
+
+```
+
+An event at time `τ` is the next one for every `t` between the previous event
+and `τ`, so it settles that whole stretch, once `m` is known at `τ`. After the
+latest event, the result depends on when the next event will come, so it is
+known at most up to the latest event, and further behind when `m` lags.
+
+## `FilterMonitor(beta, m)`
+
+Runs `m` on the sub-stream of the events satisfying the predicate `beta`, a
+function from events to booleans: every event `e` is passed to `m` only if
+`beta(e)` is true, and every interval and horizon `m` publishes is published
+again, unchanged. Below, `Flag('a')` only sees the events where `b` is not
+set. The event at 3 is dropped, so the value of `a` set at 2 lasts until the
+next event it sees, at 4:
+
+```pycon
+>>> run('a | not b', FilterMonitor(lambda e: not e.payload['b'], Flag('a')))
+a | not b    .########..   [1.0,9.0), known up to 11
+
+```
+
+Time advances for `m` only at the events that pass, so its horizon, and that
+of the filter, stays at the last of them while the others are dropped. A
+monitor combining the filter with others is held back accordingly, unless
+another operand decides it (see [dominant
+values](streaming-model.md#when-results-are-published)).
+
+## `InstrumentedMonitor(relations, m)`
+
+Keeps a list of [event relations](events.md#eventrelation-previousrelation-sessionrelation)
+up to date for `m`: every event is passed first to each relation, in list
+order, then to `m`, and every interval and horizon `m` publishes is published
+again, unchanged. When `m` receives an event, the relations have already
+recorded it, so the predicates and functions inside `m` can use them, for
+instance through `eval`. Below, the next modality tests whether `b` was set on
+the event before the next one:
+
+```pycon
+>>> previous = PreviousRelation()
+>>> b_before = previous.eval(lambda p: p.payload['b'], 0)
+>>> run('<prev b>', InstrumentedMonitor(
+...     [previous], NextMonitor(lambda e: b_before(e) == 1, 0, 1, TrueMonitor())))
+<prev b>     ...#...##..   [3.0,4.0) [7.0,9.0), known up to 11
+
+```
+
+The relations receive the events through `consume`, so they also forward
+them to the consumers attached to them. An event that a relation refuses (see
+`EventRelation`) raises `ValueError` and does not reach `m`.
+
 ## Choosing windows
 
 * `I` is relative to `t`: `[a, b]` is from `t + a` to `t + b` for the future

@@ -5,9 +5,9 @@ from cytlmonitor.events.event import Event
 from cytlmonitor.events.event_sequence import EventSequence
 from cytlmonitor.events.payload import Payload
 from cytlmonitor.events.processor import EventProcessor
-from cytlmonitor.events.relations import EventRelation, NextRelation, PreviousRelation
+from cytlmonitor.events.relations import EventRelation, PreviousRelation, SessionRelation
 
 __all__ = [
     'Payload', 'Event', 'EventSequence', 'EventConsumer', 'EventProcessor',
-    'EventRelation', 'PreviousRelation', 'NextRelation',
+    'EventRelation', 'PreviousRelation', 'SessionRelation',
 ]

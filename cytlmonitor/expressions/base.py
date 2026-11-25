@@ -56,11 +56,12 @@ from cytlmonitor.consumers.signal_consumer import SignalConsumer
 from cytlmonitor.core.interval import Interval
 from cytlmonitor.core.polynomial import Polynomial
 from cytlmonitor.core.segment import Segment
+from cytlmonitor.core.node import FormulaNode, operand
 from cytlmonitor.events.consumer import EventConsumer
 from cytlmonitor.events.event import Event
 
 
-class StreamExpression(EventConsumer):
+class StreamExpression(FormulaNode, EventConsumer):
     """An EventConsumer that publishes Segments to a list of
     SignalConsumers. :meth:`consume` remains abstract."""
 
@@ -105,6 +106,10 @@ class UnaryExpression(StreamExpression):
     ``arg`` at ``t`` transformed by :meth:`_apply`."""
 
     __slots__ = ('_arg',)
+
+    @property
+    def operands(self) -> tuple:
+        return (self.arg,)
 
     def __init__(self, arg: StreamExpression):
         super().__init__()
@@ -184,6 +189,15 @@ class BinaryExpression(StreamExpression):
     ``arg1`` and ``arg2`` at ``t`` combined by :meth:`_apply`."""
 
     __slots__ = ('_arg1', '_arg2', '_left', '_right')
+
+    _infix = True
+
+    @property
+    def operands(self) -> tuple:
+        return (self.arg1, self.arg2)
+
+    def __str__(self) -> str:
+        return f'{operand(self.arg1)} {self._symbol} {operand(self.arg2)}'
 
     def __init__(self, arg1: StreamExpression, arg2: StreamExpression):
         super().__init__()

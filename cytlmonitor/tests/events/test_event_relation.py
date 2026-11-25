@@ -29,9 +29,20 @@ class SameTimeRelation(EventRelation):
     def record(self, e):
         self.recorded.append(e)
         if e.time in self._first:
-            self._map[e] = self._first[e.time]
-        else:
-            self._first[e.time] = e
+            return self._first[e.time]
+        self._first[e.time] = e
+        return None
+
+
+class FixedRelation(EventRelation):
+    """Maps every event to a given event."""
+
+    def __init__(self, target):
+        super().__init__()
+        self.target = target
+
+    def record(self, e):
+        return self.target
 
 
 class TestAbstractness(unittest.TestCase):
@@ -117,6 +128,112 @@ class TestProcess(unittest.TestCase):
         self.assertEqual(len(c.received), 3)
         for got, sent in zip(c.received, events):
             self.assertIs(got, sent)
+
+
+class TestEval(unittest.TestCase):
+
+    @staticmethod
+    def value(e):
+        return float(e.payload['a'])
+
+    def test_mapped_event_gives_f_of_the_related_event(self):
+        r = SameTimeRelation()
+        e1, e2 = Event(1.0, Payload({'a': 1})), Event(1.0, Payload({'a': 2}))
+        r.consume(e1)
+        r.consume(e2)
+        self.assertEqual(r.eval(self.value, -1.0)(e2), 1.0)
+
+    def test_unmapped_event_gives_the_default(self):
+        r = SameTimeRelation()
+        e1 = Event(1.0, Payload({'a': 1}))
+        r.consume(e1)
+        g = r.eval(self.value, -1.0)
+        self.assertEqual(g(e1), -1.0)
+        self.assertEqual(g(Event(5.0, Payload({'a': 5}))), -1.0)
+
+    def test_f_is_not_applied_to_unmapped_events(self):
+        calls = []
+        r = SameTimeRelation()
+        e1 = Event(1.0, Payload({'a': 1}))
+        r.consume(e1)
+        r.eval(lambda e: calls.append(e) or 0.0, 0.0)(e1)
+        self.assertEqual(calls, [])
+
+    def test_reflects_events_processed_after_its_creation(self):
+        r = SameTimeRelation()
+        g = r.eval(self.value, 0.0)
+        e1, e2 = Event(1.0, Payload({'a': 3})), Event(1.0, Payload({'a': 4}))
+        self.assertEqual(g(e2), 0.0)
+        r.consume(e1)
+        r.consume(e2)
+        self.assertEqual(g(e2), 3.0)
+
+    def test_usable_while_the_event_is_forwarded(self):
+        r = SameTimeRelation()
+        g = r.eval(self.value, 0.0)
+        seen = []
+
+        class Probe(EventConsumer):
+            def consume(self, event):
+                seen.append(g(event))
+
+        r.add(Probe())
+        r.consume(Event(1.0, Payload({'a': 7})))
+        r.consume(Event(1.0, Payload({'a': 8})))
+        self.assertEqual(seen, [0.0, 7.0])
+
+    def test_rejects_non_callable(self):
+        with self.assertRaises(TypeError):
+            SameTimeRelation().eval(1.0, 0.0)
+
+
+class TestOnlyPastEvents(unittest.TestCase):
+
+    def test_rejects_an_event_not_yet_processed(self):
+        future = Event(2.0, Payload({'a': 2}))
+        r = FixedRelation(future)
+        with self.assertRaises(ValueError):
+            r.consume(Event(1.0, Payload({'a': 1})))
+
+    def test_rejects_the_event_itself(self):
+        class SelfRelation(EventRelation):
+            def record(self, e):
+                return e
+
+        with self.assertRaises(ValueError):
+            SelfRelation().consume(Event(1.0, Payload({'a': 1})))
+
+    def test_rejected_event_is_not_forwarded_nor_mapped(self):
+        e = Event(1.0, Payload({'a': 1}))
+        r = FixedRelation(Event(2.0, Payload({'a': 2})))
+        c = RecordingConsumer()
+        r.add(c)
+        with self.assertRaises(ValueError):
+            r.consume(e)
+        self.assertEqual(c.received, [])
+        self.assertIsNone(r.get(e))
+
+    def test_accepts_any_past_event(self):
+        first = Event(1.0, Payload({'a': 1}))
+        r = FixedRelation(None)
+        r.consume(first)
+        r.target = first
+        events = [Event(t, Payload({'t': t})) for t in (2.0, 3.0)]
+        for e in events:
+            r.consume(e)
+        self.assertIsNone(r.get(first))
+        for e in events:
+            self.assertIs(r.get(e), first)
+
+    def test_none_removes_a_previous_mapping(self):
+        a, b = Event(1.0, Payload({'a': 1})), Event(2.0, Payload({'a': 2}))
+        r = FixedRelation(None)
+        r.consume(a)
+        r.target = a
+        r.consume(b)
+        r.target = None
+        r.consume(b)
+        self.assertIsNone(r.get(b))
 
 
 if __name__ == '__main__':

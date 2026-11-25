@@ -51,6 +51,78 @@ flowchart TB
     AND --> FEW["AtomicLessMonitor<br/>4 · ACKs &lt; SYNs"]
 ```
 
+## Reaching the nodes of a built tree
+
+A rule is usually written as one nested expression, without a name for each
+inner node. Once it is built, its nodes can still be reached, to attach
+consumers to them before the stream is fed. Every expression and monitor is a
+`FormulaNode`:
+
+* `operands` is the tuple of the expressions or monitors it was built from,
+  in the order given to its constructor. Atomic comparisons have
+  expressions as operands, so the tree goes down to them.
+* `nodes(depth=None)` yields the nodes of the tree in pre-order, down to
+  `depth` levels below the node (`nodes(0)` is the node alone).
+* `node(i, j, ...)` follows a path of operand indexes from the node.
+* `str(node)` is the formula the node computes, with every operand written
+  with an infix operator in parentheses.
+
+```pycon
+>>> def syns(e): return e.payload.get('tcp_syn', 0)
+>>> def acks(e): return e.payload.get('tcp_ack', 0)
+>>> rule = OrMonitor(
+...     AndMonitor(AtomicGreaterMonitor(SumWindowExpression(syns, 0, 2), ConstantExpression(100)),
+...                AtomicLessMonitor(ProductExpression(ConstantExpression(4),
+...                                                    SumWindowExpression(acks, 0, 2)),
+...                                  SumWindowExpression(syns, 0, 2))),
+...     EventuallyMonitor(TrueMonitor(), Interval(0, 1, right_open=False)))
+>>> print(rule)
+((sum[0,2] syns > 100) & ((4 * sum[0,2] acks) < sum[0,2] syns)) | F[0,1] true
+>>> for node in rule.nodes(depth=2):
+...     print(node)
+((sum[0,2] syns > 100) & ((4 * sum[0,2] acks) < sum[0,2] syns)) | F[0,1] true
+(sum[0,2] syns > 100) & ((4 * sum[0,2] acks) < sum[0,2] syns)
+sum[0,2] syns > 100
+(4 * sum[0,2] acks) < sum[0,2] syns
+F[0,1] true
+true
+>>> print(rule.node(0, 1, 0))
+4 * sum[0,2] acks
+
+```
+
+A function given to an operator, such as the weight of a sum or the
+predicate of a filter, is written with its name, or as `w` or `beta` when it
+is a lambda. A monitor class written by a user is written with its class
+name, unless it defines `__str__` (and `operands`, to be navigated).
+
+### Plotting any node, after building
+
+`plot(root, depth=None, nodes=None, titles=None, title=None, axes=None)` attaches a
+plotting consumer to nodes of the tree of `root`, each on its own axes in one
+figure, one above the other and sharing the time axis. It uses a
+`PlotBooleanSignalConsumer` for a monitor and a `PlotSignalConsumer` for an
+expression, each titled with the node's formula, unless `titles` gives
+another title. It returns the consumers, in order, so that a plot can be
+customised through its `axes`:
+
+```python
+rule = build_rule()                          # any nesting of operators
+plot(rule, depth=2)                          # the root and two levels below it
+plot(rule, nodes=[(0, 1), rule.node(1)],     # chosen nodes, by path or node
+     titles={rule: 'Suspicious'}, title='Port scan')
+for event in stream:
+    rule.consume(event)
+matplotlib.pyplot.show()
+```
+
+Without `depth` or `nodes`, the whole tree is plotted. `axes` places the
+plots on given Matplotlib axes, one per node, instead of a new figure: two
+columns of one figure compare two runs side by side (see
+`examples/worker_performance.py`). The consumers only
+receive what is published after they are attached, so call `plot` before
+feeding the root.
+
 ## A worked example: brute force until a login
 
 An attacker tries passwords: each attempt is an event with a `login` field.

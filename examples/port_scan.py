@@ -31,12 +31,13 @@ import random
 
 from _traffic import (
     AlarmPrinter, arguments, count_last, feed, field, merge, normal_traffic, packet,
-    report, show, stacked_axes, steady,
+    report, show, steady,
 )
 from cytlmonitor import (
     AndMonitor, AtomicGreaterMonitor, AtomicLessMonitor, ConstantExpression,
-    ImplyMonitor, NotMonitor, OrMonitor, PlotBooleanSignalConsumer, ProductExpression,
+    EventMonitor, ImplyMonitor, NotMonitor, OrMonitor, ProductExpression,
 )
+from cytlmonitor import plot as plot_nodes
 
 WINDOW = 2.0
 
@@ -92,13 +93,16 @@ def main(plot: bool = False, quiet: bool = False):
     handshakes_answered.add(printers['not (many SYNs -> not few ACKs)'])
 
     if plot:
-        axes = stacked_axes('Port scan, ICMP flood and a combined rule', 5)
-        for monitor, title, ax in ((syn_burst, 'More than 100 SYNs', axes[0]),
-                                   (unanswered, 'Fewer than one ACK every four SYNs', axes[1]),
-                                   (scan, 'Port scan: many SYNs and few ACKs', axes[2]),
-                                   (icmp, 'ICMP flood', axes[3]),
-                                   (suspicious, 'Suspicious: port scan or ICMP flood', axes[4])):
-            monitor.add(PlotBooleanSignalConsumer(title, axes=ax))
+        # The monitors in the two levels below ``suspicious``, reached once
+        # it is built: suspicious, scan, many SYNs, few ACKs and ICMP flood.
+        monitors = [n for n in suspicious.nodes(depth=2) if isinstance(n, EventMonitor)]
+        plot_nodes(suspicious, nodes=monitors,
+                   title='Port scan, ICMP flood and a combined rule',
+                   titles={syn_burst: 'More than 100 SYNs',
+                           unanswered: 'Fewer than one ACK every four SYNs',
+                           scan: 'Port scan: many SYNs and few ACKs',
+                           icmp: 'ICMP flood',
+                           suspicious: 'Suspicious: port scan or ICMP flood'})
 
     if not quiet:
         print(f'Counting over the last {WINDOW:g} s:')

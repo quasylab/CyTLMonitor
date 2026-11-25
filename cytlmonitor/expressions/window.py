@@ -90,6 +90,7 @@ from typing import Callable, Deque, Optional, Tuple
 
 from cytlmonitor.consumers.signal_consumer import SignalConsumer
 from cytlmonitor.core.interval import Interval
+from cytlmonitor.core.node import function_name, operand, window
 from cytlmonitor.core.polynomial import Polynomial
 from cytlmonitor.core.segment import Segment
 from cytlmonitor.events.event import Event
@@ -102,6 +103,9 @@ class SumWindowExpression(StreamExpression):
 
     __slots__ = ('_w', '_from', '_to', '_window', '_cursor', '_cursor_open',
                  '_accumulator', '_last_time')
+
+    def __str__(self) -> str:
+        return f"sum{window(self.from_, self.to)} {function_name(self.w, 'w')}"
 
     def __init__(self, w: Callable[[Event], float], from_: float, to: float):
         super().__init__()
@@ -219,6 +223,13 @@ class WindowExtremumExpression(StreamExpression):
     __slots__ = ('_arg', '_from', '_to', '_window', '_cursor', '_cursor_open',
                  '_input_end', '_input_open')
 
+    @property
+    def operands(self) -> tuple:
+        return (self.arg,)
+
+    def __str__(self) -> str:
+        return f'{self._name}{window(self.from_, self.to)} {operand(self.arg)}'
+
     def __init__(self, arg: StreamExpression, from_: float, to: float):
         super().__init__()
         if not isinstance(arg, StreamExpression):
@@ -325,6 +336,8 @@ class MaxWindowExpression(WindowExtremumExpression):
 
     __slots__ = ()
 
+    _name = 'max'
+
     @staticmethod
     def _supersedes(value: float, other: float) -> bool:
         """A later value at least as large as ``other`` supersedes it."""
@@ -336,6 +349,8 @@ class MinWindowExpression(WindowExtremumExpression):
     the signal of ``arg`` over ``[t + from, t + to]``."""
 
     __slots__ = ()
+
+    _name = 'min'
 
     @staticmethod
     def _supersedes(value: float, other: float) -> bool:

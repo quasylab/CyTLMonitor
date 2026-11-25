@@ -1,7 +1,9 @@
 # Examples
 
 Each script builds a few monitors from `cytlmonitor`, feeds them with synthetic
-network traffic, and prints the time windows where each property holds. Run
+network traffic (or, for `worker_performance.py`, the events of a worker
+running jobs), and prints the time windows where each property holds (or, for
+`worker_performance.py`, is violated). Run
 them from the repository root:
 
 ```bash
@@ -21,6 +23,7 @@ output. The events have the same payload fields as the packets read by
 | `port_scan.py` | many SYNs and few ACKs, or an ICMP flood; the same rule written with an implication | `AndMonitor`, `OrMonitor`, `NotMonitor`, `ImplyMonitor`, `AtomicLessMonitor`, `ProductExpression` |
 | `until_since.py` | SSH brute force that ends in a successful login, and failures that go on after a login | `UntilMonitor`, `SinceMonitor`, events with custom fields |
 | `quiet_since_attack.py` | quiet since an attack, reported by a detector's alerts, that ended less than 30 s ago (cooling down), or at least 30 s ago (all clear) | a custom `EventMonitor`, `SinceMonitor` with windows `(0, 30]` and `[30, ∞)`, `NotMonitor`, handing over between complementary signals |
+| `worker_performance.py` | a worker's jobs of two kinds, A and B (`START`, `STEP`, `DONE` events per session): average running jobs in a range, average completion time below a threshold, few heavy jobs, jobs that keep arriving, B jobs ending quickly, recovery from an overload, and the difference between the arrival rates and the throughputs of A and B; a stable and an unreliable worker compared side by side | `SessionRelation`, `PreviousRelation` and `eval`, `InstrumentedMonitor`, `DivisionExpression` as an average, `DifferenceExpression` comparing two rates, `NextMonitor` inside `FilterMonitor`, `UntilMonitor`, `plot` on nodes of built monitors |
 
 `scalability.py` measures how these monitors cope with longer streams: see
 [Scalability](#scalability) below.
@@ -71,7 +74,8 @@ threshold again for an instant. Combined with "more than 100 SYNs" in the port
 scan rule, it does not.
 
 **Plotting.** With `--plot`, each script stacks a `PlotSignalConsumer` or
-`PlotBooleanSignalConsumer` per signal; the dashed vertical line is the
+`PlotBooleanSignalConsumer` per signal (`port_scan.py` attaches them with
+`plot`, to nodes reached in the rule once it is built); the dashed vertical line is the
 horizon. A boolean signal is drawn at 1 where it is true and at 0 where it is
 false, with a dot at each end of an interval showing the value there: at 1
 when the end is closed, at 0 when it is open. The consumers only redraw while the stream is processed when

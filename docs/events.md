@@ -29,6 +29,7 @@ classDiagram
     }
     class EventRelation {
         get(event) Event | None
+        eval(f, v) function
         record(event)
     }
     Event *-- Payload
@@ -36,13 +37,14 @@ classDiagram
     EventConsumer <|-- EventProcessor
     EventProcessor <|-- EventRelation
     EventRelation <|-- PreviousRelation
-    EventRelation <|-- NextRelation
+    EventRelation <|-- SessionRelation
     EventProcessor o-- "*" EventConsumer : forwards to
 ```
 
 ```pycon
 >>> from cytlmonitor import (Event, EventConsumer, EventProcessor, EventSequence,
-...                          NextRelation, Payload, PreviousRelation)
+...                          EventRelation, Payload, PreviousRelation,
+...                          SessionRelation)
 
 ```
 
@@ -121,23 +123,73 @@ got 2.0
 Since a monitor is also an event consumer, a processor can sit in front of
 one: `large.add(monitor)` monitors only the large packets.
 
-## `EventRelation`, `PreviousRelation`, `NextRelation`
+## `EventRelation`, `PreviousRelation`, `SessionRelation`
 
 Processors that forward every event unchanged and remember, for each, a
-related event, to be looked up with `get(event)`. `PreviousRelation` relates
-each event to the one before it, `NextRelation` to the one after it, once that
-has arrived. Subclasses of `EventRelation` implement `record(event)`.
+related event of its past, to be looked up with `get(event)`. Subclasses of
+`EventRelation` implement `record(event)`, returning the related event or
+`None`. That event must have been processed by the relation before: an event
+can never be related to itself or to a later one, so its relation is known
+as soon as it arrives. Any other event makes `consume` raise `ValueError`.
+`PreviousRelation` relates each event to the one before it.
+
+`eval(f, v)` turns a function `f` from events to floats into one evaluated on
+the related event: it maps `e` to `f(e')` if `e` is related to `e'`, and to
+`v` otherwise. It reads the relation when called, so it can be used by the
+consumers the events are forwarded to, for example to compare an event with
+the previous one.
 
 ```pycon
->>> previous, following = PreviousRelation(), NextRelation()
->>> previous.add(following)                         # a chain of two processors
+>>> previous = PreviousRelation()
 >>> events = [Event(t, Payload({})) for t in (1, 2, 4)]
 >>> for e in events:
 ...     previous.consume(e)
->>> previous.get(events[0]) is None, previous.get(events[1]).time
-(True, 1.0)
->>> following.get(events[1]).time, following.get(events[2]) is None
-(4.0, True)
+>>> previous.get(events[0]) is None, previous.get(events[2]).time
+(True, 2.0)
+>>> gap = previous.eval(lambda e: e.time, 0.0)      # time of the previous event
+>>> [e.time - gap(e) for e in events]
+[1.0, 1.0, 2.0]
+>>> class FirstRelation(EventRelation):             # relates every event to the first
+...     def __init__(self):
+...         super().__init__()
+...         self.first = None
+...     def record(self, e):
+...         if self.first is None:
+...             self.first = e
+...             return None
+...         return self.first
+>>> first = FirstRelation()
+>>> for e in events:
+...     first.consume(e)
+>>> first.get(events[2]).time
+1.0
+>>> class Ahead(EventRelation):                     # not allowed: a future event
+...     def record(self, e):
+...         return Event(e.time + 1, Payload({}))
+>>> Ahead().consume(events[0])
+Traceback (most recent call last):
+    ...
+ValueError: An event can only be related to a past event: ...
+
+```
+
+`SessionRelation(f_open, f_close)` relates each event closing a session to
+the event that opened it. `f_open` and `f_close` map an event to the index of
+the session it opens or closes, or `None`. When an event `e` arrives,
+`f_close` is evaluated first: if `f_close(e)` is an index opened by an event
+`e'`, `e` is related to `e'`. Then, if `f_open(e)` is an index, `e` becomes
+the event opening it, replacing the previous one. Closing an index does not
+remove it, and `opened(i)` returns the latest event that opened `i`.
+
+```pycon
+>>> sessions = SessionRelation(lambda e: e.payload.get('login'),
+...                            lambda e: e.payload.get('logout'))
+>>> log = [Event(1, Payload({'login': 7})), Event(2, Payload({'login': 8})),
+...        Event(3, Payload({'logout': 7})), Event(4, Payload({'logout': 9}))]
+>>> for e in log:
+...     sessions.consume(e)
+>>> sessions.get(log[2]).time, sessions.get(log[3]) is None, sessions.opened(8).time
+(1.0, True, 2.0)
 
 ```
 

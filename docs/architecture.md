@@ -7,9 +7,9 @@ events. Each layer depends only on the layers below it:
 
 ```mermaid
 flowchart BT
-    core["<b>core</b><br/>Interval · Polynomial · Segment<br/>Signal · BooleanSignal"]
+    core["<b>core</b><br/>Interval · Polynomial · Segment<br/>Signal · BooleanSignal · FormulaNode"]
     events["<b>events</b><br/>Payload · Event · EventSequence<br/>EventConsumer · EventProcessor · relations"]
-    consumers["<b>consumers</b><br/>SignalConsumer · BooleanSignalConsumer<br/><i>plot/</i>: PlotSignalConsumer · PlotBooleanSignalConsumer"]
+    consumers["<b>consumers</b><br/>SignalConsumer · BooleanSignalConsumer<br/><i>plot/</i>: PlotSignalConsumer · PlotBooleanSignalConsumer · plot"]
     expressions["<b>expressions</b><br/>StreamExpression and its operators"]
     monitors["<b>monitors</b><br/>EventMonitor and its operators"]
     offline["<b>offline</b><br/>Measure · SignalExpression"]
@@ -114,6 +114,9 @@ classDiagram
     EventMonitor <|-- GloballyMonitor
     EventMonitor <|-- UntilMonitor
     EventMonitor <|-- SinceMonitor
+    EventMonitor <|-- FilterMonitor
+    EventMonitor <|-- InstrumentedMonitor
+    EventMonitor <|-- NextMonitor
     BinaryMonitor <|-- AndMonitor
     BinaryMonitor <|-- OrMonitor
     BinaryMonitor <|-- ImplyMonitor
@@ -128,7 +131,7 @@ classDiagram
     direction LR
     EventProcessor <|-- EventRelation
     EventRelation <|-- PreviousRelation
-    EventRelation <|-- NextRelation
+    EventRelation <|-- SessionRelation
     SignalConsumer <|.. PlotSignalConsumer
     BooleanSignalConsumer <|.. PlotBooleanSignalConsumer
     BooleanSignalConsumer <|.. MonitorInput
@@ -153,7 +156,9 @@ Nobody polls and nothing is buffered between stages, so each event goes all the
 way through a tree of operators before `consume` returns. Any number of
 observers can be attached to any node, including nodes nested inside another
 operator: this is how the examples print or plot the intermediate signals of a
-rule.
+rule. Every expression and monitor is a `FormulaNode` (`cytlmonitor.core.node`):
+its `operands`, `nodes()` and `node(path)` reach those nested nodes once the
+tree is built, and `consumers.plot.plot` attaches plots to them.
 
 ### Composite: operators are trees
 
@@ -204,7 +209,7 @@ management once; subclasses supply only what makes them different:
 | `BinaryMonitor` | `_combine(s1, s2, window)` and the class attribute `_dominant` | `AndMonitor`, `OrMonitor`, `ImplyMonitor` |
 | `AtomicComparisonMonitor` | the class attributes `_strict` and `_reversed` | `AtomicLeqMonitor`, `AtomicLessMonitor`, `AtomicGeqMonitor`, `AtomicGreaterMonitor` |
 | `EventProcessor` | `process(event)`: the event to forward, or `None` | `EventRelation` and user processors |
-| `EventRelation` | `record(event)`: what to remember about it | `PreviousRelation`, `NextRelation` |
+| `EventRelation` | `record(event)`: the past event it is related to, or `None` | `PreviousRelation`, `SessionRelation` |
 | `EventReader` | `_records(handle, error)`: the records of a file, as Python values | `JsonEventReader`, `CsvEventReader` |
 
 For instance, the four atomic comparisons are each a few lines declaring two

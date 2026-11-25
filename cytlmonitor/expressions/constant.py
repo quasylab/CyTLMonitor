@@ -14,6 +14,7 @@ expression, as a threshold.
 from __future__ import annotations
 
 from cytlmonitor.core.interval import Interval
+from cytlmonitor.core.node import number
 from cytlmonitor.core.polynomial import Polynomial
 from cytlmonitor.core.segment import Segment
 from cytlmonitor.events.event import Event
@@ -25,6 +26,9 @@ class ConstantExpression(StreamExpression):
     consumed event."""
 
     __slots__ = ('_value', '_last')
+
+    def __str__(self) -> str:
+        return number(self.value)
 
     def __init__(self, value: float):
         super().__init__()

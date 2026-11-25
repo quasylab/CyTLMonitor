@@ -14,17 +14,18 @@ Every public class is also re-exported here.
 """
 
 from cytlmonitor.consumers import BooleanSignalConsumer, SignalConsumer
-from cytlmonitor.consumers.plot import PlotBooleanSignalConsumer, PlotSignalConsumer
+from cytlmonitor.consumers.plot import PlotBooleanSignalConsumer, PlotSignalConsumer, plot
 from cytlmonitor.core import BooleanSignal, Interval, Polynomial, Segment, Signal
+from cytlmonitor.core.node import FormulaNode
 from cytlmonitor.events import (
     Event,
     EventConsumer,
     EventProcessor,
     EventRelation,
     EventSequence,
-    NextRelation,
     Payload,
     PreviousRelation,
+    SessionRelation,
 )
 from cytlmonitor.expressions import (
     AbsExpression,
@@ -49,8 +50,11 @@ from cytlmonitor.monitors import (
     EventMonitor,
     EventuallyMonitor,
     FalseMonitor,
+    FilterMonitor,
+    InstrumentedMonitor,
     GloballyMonitor,
     ImplyMonitor,
+    NextMonitor,
     NotMonitor,
     OrMonitor,
     SinceMonitor,
@@ -61,14 +65,16 @@ from cytlmonitor.io import CsvEventReader, EventFormatError, EventReader, JsonEv
 from cytlmonitor.offline import Measure, SignalExpression
 
 __all__ = [
-    'Interval', 'Polynomial', 'Segment', 'Signal', 'Payload', 'Event', 'EventSequence',
+    'Interval', 'Polynomial', 'Segment', 'Signal', 'FormulaNode', 'plot', 'Payload', 'Event',
+    'EventSequence',
     'EventConsumer', 'EventProcessor', 'EventRelation', 'PreviousRelation',
-    'NextRelation', 'SignalConsumer', 'PlotSignalConsumer', 'BooleanSignalConsumer',
+    'SessionRelation', 'SignalConsumer', 'PlotSignalConsumer', 'BooleanSignalConsumer',
     'PlotBooleanSignalConsumer', 'EventMonitor', 'TrueMonitor', 'FalseMonitor',
     'AndMonitor', 'OrMonitor', 'NotMonitor', 'ImplyMonitor', 'AtomicLeqMonitor',
     'AtomicLessMonitor', 'AtomicGeqMonitor', 'AtomicGreaterMonitor',
     'EventuallyMonitor', 'GloballyMonitor', 'UntilMonitor', 'SinceMonitor',
-    'StreamExpression', 'ConstantExpression', 'SumExpression', 'ProductExpression',
+    'FilterMonitor', 'NextMonitor', 'InstrumentedMonitor', 'StreamExpression',
+    'ConstantExpression', 'SumExpression', 'ProductExpression',
     'DifferenceExpression', 'DivisionExpression', 'NegationExpression', 'AbsExpression',
     'ShiftExpression', 'SumWindowExpression', 'MaxWindowExpression',
     'MinWindowExpression', 'BooleanSignal', 'Measure', 'SignalExpression',

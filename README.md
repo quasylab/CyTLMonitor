@@ -24,7 +24,7 @@ cytlmonitor/        the library (every public class is re-exported by the packag
   events/           events, payloads, event sequences, stream consumers and relations
   consumers/        signal consumers; plot/ draws signals live with matplotlib
   expressions/      online quantitative expressions (arithmetic, shift, windows)
-  monitors/         online boolean monitors (constants, connectives, atomic, temporal)
+  monitors/         online boolean monitors (constants, connectives, atomic, temporal, next, filter, instrumented)
   offline/          measures and offline evaluation over an event sequence
   io/               readers of event sequences from JSON and CSV files
   tests/            unit tests (pytest), mirroring the subpackages, plus smoke tests of the examples
@@ -88,6 +88,9 @@ though every part of a result is published as soon as it is decided.
 | `GloballyMonitor(m, I)` | `m` is true at every `t + t'`, `t'` in `I` |
 | `UntilMonitor(m1, m2, I)` | `m2` is true at some `t'` in `t + I`, and `m1` on `[t, t')` |
 | `SinceMonitor(m1, m2, I)` | `m2` was true at some `t'` with `t - t'` in `I`, and `m1` is true on `(t', t]` |
+| `NextMonitor(beta, a, b, m)` | the next event arrives at some `t'` in `[t + a, t + b]`, satisfies `beta`, and `m` is true at `t'` |
+| `FilterMonitor(beta, m)` | `m` is true, monitoring only the events `e` with `beta(e)` true |
+| `InstrumentedMonitor(relations, m)` | `m` is true, with `relations` updated with each event before `m` sees it |
 
 In until and since, `m1` is not required at `t'` itself, so `m1` may stop (or
 start) exactly where `m2` starts (or stops). When `I` contains 0, `t' = t` is
@@ -100,9 +103,14 @@ where `m2` is true, as long as `t' < t`, so that a property can take over from
 `PlotSignalConsumer` and `PlotBooleanSignalConsumer` plot it with Matplotlib,
 updating the figure while the stream is processed when Matplotlib is in
 interactive mode. Any number of consumers can be attached to an expression or a
-monitor, including those nested inside another. An expression or a monitor,
-however, must not be the argument of two others: each would pass it every
-event.
+monitor, including those nested inside another, also once the whole tree is
+built: every node lists its `operands`, `nodes(depth)` walks the tree,
+`node(i, j, ...)` follows a path, and `str(node)` is its formula.
+`plot(root, depth=..., nodes=...)` plots chosen nodes of a built monitor in one
+figure, each titled with its formula (see
+[composing monitors](docs/composition.md#reaching-the-nodes-of-a-built-tree)).
+An expression or a monitor, however, must not be the argument of two others:
+each would pass it every event.
 
 **Reading events from files.** `JsonEventReader` and `CsvEventReader` read a
 sequence of events from a JSON file (shaped as `EventSequence`, `Event` and
@@ -111,8 +119,9 @@ per event), checking that times are strictly increasing and that each field
 keeps the same type. `read(path)` returns an `EventSequence`; `events(path)`
 yields the events one at a time, to feed a monitor while the file is read.
 
-**Event processors** (`EventProcessor`, `PreviousRelation`, `NextRelation`)
-transform event streams and relate each event to the previous or next one.
+**Event processors** (`EventProcessor`, `EventRelation`, `PreviousRelation`,
+`SessionRelation`) transform event streams and relate each event to one of its
+past events, such as the previous one or the one that opened its session.
 
 ---
 

@@ -91,6 +91,7 @@ from __future__ import annotations
 
 from typing import Iterable
 
+from cytlmonitor.core.node import operand
 from cytlmonitor.core.polynomial import Polynomial
 from cytlmonitor.core.segment import Segment
 from cytlmonitor.expressions.base import BinaryExpression, UnaryExpression
@@ -101,6 +102,8 @@ class SumExpression(BinaryExpression):
     signals of ``arg1`` and ``arg2`` at ``t``."""
 
     __slots__ = ()
+
+    _symbol = '+'
 
     @staticmethod
     def _apply(p1: Polynomial, p2: Polynomial) -> Polynomial:
@@ -113,6 +116,8 @@ class DifferenceExpression(BinaryExpression):
 
     __slots__ = ()
 
+    _symbol = '-'
+
     @staticmethod
     def _apply(p1: Polynomial, p2: Polynomial) -> Polynomial:
         return p1.sub(p2)
@@ -123,6 +128,8 @@ class ProductExpression(BinaryExpression):
     signals of ``arg1`` and ``arg2`` at ``t``."""
 
     __slots__ = ()
+
+    _symbol = '*'
 
     @staticmethod
     def _apply(p1: Polynomial, p2: Polynomial) -> Polynomial:
@@ -135,6 +142,8 @@ class DivisionExpression(BinaryExpression):
     signal of ``arg2`` is 0."""
 
     __slots__ = ()
+
+    _symbol = '/'
 
     @staticmethod
     def _apply(p1: Polynomial, p2: Polynomial) -> Polynomial:
@@ -149,6 +158,9 @@ class NegationExpression(UnaryExpression):
 
     __slots__ = ()
 
+    def __str__(self) -> str:
+        return f'-{operand(self.arg)}'
+
     def _apply(self, s: Segment) -> Iterable[Segment]:
         return [Segment(s.interval, Polynomial.ZERO.sub(s.polynomial))]
 
@@ -158,6 +170,9 @@ class AbsExpression(UnaryExpression):
     value of the signal of ``arg`` at ``t``."""
 
     __slots__ = ()
+
+    def __str__(self) -> str:
+        return f'|{self.arg}|'
 
     def _apply(self, s: Segment) -> Iterable[Segment]:
         p = s.polynomial

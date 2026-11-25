@@ -116,6 +116,19 @@ class TestConsume(PlotTestCase):
         self.assertEqual(line_data(p), ([0.0, 2.0], [1.0, 1.0]))
         self.assertGreaterEqual(p.axes.lines[1].get_markersize(), 8)
 
+    def test_point_closing_the_line_with_its_value_is_not_marked(self):
+        p = PlotSignalConsumer()
+        p.consume(segment(Interval(0, 2), 1))
+        p.consume(segment(Interval.point(2), 1))
+        p.consume(segment(Interval(2, 3, left_open=True), 4))
+        self.assertEqual(point_data(p), ([], []))
+        self.assertEqual(line_data(p), ([0.0, 2.0, 2.0, 3.0], [1.0, 1.0, 4.0, 4.0]))
+
+    def test_isolated_point_is_marked(self):
+        p = PlotSignalConsumer()
+        p.consume(segment(Interval.point(2), 1))
+        self.assertEqual(point_data(p), ([2.0], [1.0]))
+
     def test_unbounded_segment_is_drawn_beyond_the_furthest_point(self):
         p = PlotSignalConsumer(unbounded_extent=2)
         p.consume(segment(Interval(0, 5), 1))

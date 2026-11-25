@@ -37,6 +37,9 @@ class TrueMonitor(EventMonitor):
 
     __slots__ = ('_last',)
 
+    def __str__(self) -> str:
+        return 'true'
+
     def __init__(self):
         super().__init__()
         self._last = 0.0
@@ -66,6 +69,9 @@ class FalseMonitor(EventMonitor):
     """An EventMonitor publishing a signal that is false everywhere."""
 
     __slots__ = ('_last',)
+
+    def __str__(self) -> str:
+        return 'false'
 
     def __init__(self):
         super().__init__()

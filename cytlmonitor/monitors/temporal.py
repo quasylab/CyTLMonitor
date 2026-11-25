@@ -146,6 +146,7 @@ from typing import Optional
 from cytlmonitor.consumers.boolean_signal_consumer import BooleanSignalConsumer
 from cytlmonitor.core.boolean_signal import BooleanSignal
 from cytlmonitor.core.interval import Interval
+from cytlmonitor.core.node import interval_window, operand
 from cytlmonitor.events.event import Event
 from cytlmonitor.monitors.base import EventMonitor, MonitorInput
 from cytlmonitor.monitors.boolean import NotMonitor
@@ -172,6 +173,13 @@ class EventuallyMonitor(EventMonitor):
     some point of ``i_arg`` from now."""
 
     __slots__ = ('_arg', '_i_arg', '_last', '_last_included', '_horizon')
+
+    @property
+    def operands(self) -> tuple:
+        return (self.arg,)
+
+    def __str__(self) -> str:
+        return f'F{interval_window(self.i_arg)} {operand(self.arg)}'
 
     def __init__(self, arg: EventMonitor, i_arg: Interval):
         super().__init__()
@@ -270,6 +278,13 @@ class GloballyMonitor(EventMonitor):
 
     __slots__ = ('_arg', '_i_arg', '_inner')
 
+    @property
+    def operands(self) -> tuple:
+        return (self.arg,)
+
+    def __str__(self) -> str:
+        return f'G{interval_window(self.i_arg)} {operand(self.arg)}'
+
     def __init__(self, arg: EventMonitor, i_arg: Interval):
         super().__init__()
         if not isinstance(arg, EventMonitor):
@@ -340,6 +355,15 @@ class UntilMonitor(EventMonitor):
     until the signal of ``arg2`` is true, within ``i_arg``."""
 
     __slots__ = ('_arg1', '_arg2', '_i_arg', '_left', '_right', '_horizon', '_consuming')
+
+    _infix = True
+
+    @property
+    def operands(self) -> tuple:
+        return (self.arg1, self.arg2)
+
+    def __str__(self) -> str:
+        return f'{operand(self.arg1)} U{interval_window(self.i_arg)} {operand(self.arg2)}'
 
     def __init__(self, arg1: EventMonitor, arg2: EventMonitor, i_arg: Interval):
         super().__init__()
@@ -452,6 +476,15 @@ class SinceMonitor(EventMonitor):
     past."""
 
     __slots__ = ('_arg1', '_arg2', '_i_arg', '_left', '_right', '_horizon', '_consuming')
+
+    _infix = True
+
+    @property
+    def operands(self) -> tuple:
+        return (self.arg1, self.arg2)
+
+    def __str__(self) -> str:
+        return f'{operand(self.arg1)} S{interval_window(self.i_arg)} {operand(self.arg2)}'
 
     def __init__(self, arg1: EventMonitor, arg2: EventMonitor, i_arg: Interval):
         super().__init__()

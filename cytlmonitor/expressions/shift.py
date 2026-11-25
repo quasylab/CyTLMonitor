@@ -31,6 +31,7 @@ from __future__ import annotations
 from typing import Iterable, List, Optional
 
 from cytlmonitor.core.interval import Interval
+from cytlmonitor.core.node import number, operand
 from cytlmonitor.core.polynomial import Polynomial
 from cytlmonitor.core.segment import Segment
 from cytlmonitor.expressions.base import StreamExpression, UnaryExpression
@@ -41,6 +42,9 @@ class ShiftExpression(UnaryExpression):
     ``arg`` at ``x - t``."""
 
     __slots__ = ('_t', '_started', '_published', '_end', '_end_included')
+
+    def __str__(self) -> str:
+        return f'shift[{number(self.t)}] {operand(self.arg)}'
 
     def __init__(self, arg: StreamExpression, t: float):
         super().__init__(arg)

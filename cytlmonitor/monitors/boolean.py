@@ -83,6 +83,7 @@ from typing import Optional, Tuple
 
 from cytlmonitor.core.boolean_signal import BooleanSignal
 from cytlmonitor.core.interval import Interval
+from cytlmonitor.core.node import operand
 from cytlmonitor.events.event import Event
 from cytlmonitor.monitors.base import EventMonitor, MonitorInput, complement_within
 
@@ -92,6 +93,15 @@ class BinaryMonitor(EventMonitor):
     combined by :meth:`_combine`."""
 
     __slots__ = ('_m1', '_m2', '_left', '_right', '_horizon', '_consuming')
+
+    _infix = True
+
+    @property
+    def operands(self) -> tuple:
+        return (self.m1, self.m2)
+
+    def __str__(self) -> str:
+        return f'{operand(self.m1)} {self._symbol} {operand(self.m2)}'
 
     def __init__(self, m1: EventMonitor, m2: EventMonitor):
         super().__init__()
@@ -201,6 +211,8 @@ class AndMonitor(BinaryMonitor):
     ``m1`` and ``m2``."""
 
     __slots__ = ()
+
+    _symbol = '&'
     _dominant = (False, False)
 
     @staticmethod
@@ -213,6 +225,8 @@ class OrMonitor(BinaryMonitor):
     ``m1`` and ``m2``."""
 
     __slots__ = ()
+
+    _symbol = '|'
     _dominant = (True, True)
 
     @staticmethod
@@ -225,6 +239,8 @@ class ImplyMonitor(BinaryMonitor):
     of ``m1`` to that of ``m2``."""
 
     __slots__ = ()
+
+    _symbol = '->'
     _dominant = (False, True)
 
     @staticmethod
@@ -237,6 +253,13 @@ class NotMonitor(EventMonitor):
     ``m``."""
 
     __slots__ = ('_m', '_input', '_horizon')
+
+    @property
+    def operands(self) -> tuple:
+        return (self.m,)
+
+    def __str__(self) -> str:
+        return f'not {operand(self.m)}'
 
     def __init__(self, m: EventMonitor):
         super().__init__()

@@ -9,7 +9,7 @@ Matplotlib (see :mod:`cytlmonitor.consumers.plot.signal` and
 from __future__ import annotations
 
 import time
-from typing import Dict, Optional
+from typing import Callable, Dict, Optional, Sequence, Tuple
 
 
 # Chart colors, for the light and the dark surface.
@@ -75,3 +75,72 @@ class Redrawer:
         canvas.draw_idle()
         canvas.flush_events()
         self._last = time.monotonic()
+
+
+Data = Tuple[Sequence[float], Sequence[float]]
+
+# The LazyLine class, built the first time a line is made, once Matplotlib
+# is imported.
+_lazy_line_class = None
+
+
+def lazy_line(axes, fetch: Callable[[], Data], **style):
+    """Add to ``axes``, and return, a line whose data is read from
+    ``fetch()`` only when it is drawn or asked for, after
+    ``line.invalidate()`` has been called.
+
+    Setting the data of a Matplotlib line copies it, so setting it at every
+    change of a growing signal would take time quadratic in its length:
+    invalidating it is constant time.
+    """
+    global _lazy_line_class
+    if _lazy_line_class is None:
+        from matplotlib.lines import Line2D
+
+        class LazyLine(Line2D):
+            """A Line2D fetching its data when it is drawn or read."""
+
+            def __init__(self, fetch, **style):
+                self._fetch = fetch
+                self._data_stale = False
+                super().__init__([], [], **style)
+
+            def invalidate(self) -> None:
+                """Mark the data as changed: it is fetched again before
+                the line is next drawn or read."""
+                self._data_stale = True
+                self.stale = True
+
+            def _sync(self) -> None:
+                if getattr(self, '_data_stale', False):
+                    self._data_stale = False
+                    Line2D.set_data(self, *self._fetch())
+
+            def draw(self, renderer):
+                self._sync()
+                super().draw(renderer)
+
+            def get_data(self, orig=True):
+                self._sync()
+                return super().get_data(orig)
+
+            def get_xdata(self, orig=True):
+                self._sync()
+                return super().get_xdata(orig)
+
+            def get_ydata(self, orig=True):
+                self._sync()
+                return super().get_ydata(orig)
+
+            def get_xydata(self):
+                self._sync()
+                return super().get_xydata()
+
+            def get_path(self):
+                self._sync()
+                return super().get_path()
+
+        _lazy_line_class = LazyLine
+    line = _lazy_line_class(fetch, **style)
+    axes.add_line(line)
+    return line

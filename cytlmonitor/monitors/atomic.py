@@ -76,6 +76,7 @@ from __future__ import annotations
 from abc import abstractmethod
 
 from cytlmonitor.consumers.signal_consumer import SignalConsumer
+from cytlmonitor.core.node import operand
 from cytlmonitor.core.segment import Segment
 from cytlmonitor.events.event import Event
 from cytlmonitor.expressions.arithmetic import DifferenceExpression
@@ -102,6 +103,15 @@ class AtomicComparisonMonitor(EventMonitor):
     ``arg2``, or greater than (or equal to) it if :attr:`_reversed`."""
 
     __slots__ = ('_arg1', '_arg2', '_difference', '_horizon')
+
+    _infix = True
+
+    @property
+    def operands(self) -> tuple:
+        return (self.arg1, self.arg2)
+
+    def __str__(self) -> str:
+        return f'{operand(self.arg1)} {self._symbol} {operand(self.arg2)}'
 
     #: True if ``arg1`` must be greater than ``arg2`` rather than less.
     _reversed = False
@@ -162,6 +172,8 @@ class AtomicLeqMonitor(AtomicComparisonMonitor):
 
     __slots__ = ()
 
+    _symbol = '<='
+
     _strict = False
 
 
@@ -170,6 +182,8 @@ class AtomicLessMonitor(AtomicComparisonMonitor):
     the signal of ``arg2``."""
 
     __slots__ = ()
+
+    _symbol = '<'
 
     _strict = True
 
@@ -180,6 +194,8 @@ class AtomicGeqMonitor(AtomicComparisonMonitor):
 
     __slots__ = ()
 
+    _symbol = '>='
+
     _strict = False
     _reversed = True
 
@@ -189,6 +205,8 @@ class AtomicGreaterMonitor(AtomicComparisonMonitor):
     than the signal of ``arg2``."""
 
     __slots__ = ()
+
+    _symbol = '>'
 
     _strict = True
     _reversed = True
