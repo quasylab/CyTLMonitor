@@ -17,6 +17,7 @@ pages explain how the library is built and how its classes fit together.
 | [Consumers](consumers.md) | the interfaces receiving signals, and the plotting consumers |
 | [Offline evaluation](offline.md) | `Measure` and `SignalExpression`, over a whole event sequence |
 | [Reading events from files](io.md) | `JsonEventReader`, `CsvEventReader`: the formats, the checks, schemas, feeding a monitor from a file |
+| [The specification language](language.md) | writing the properties in words: `parse`, `load`, `Specification`, the grammar and the errors |
 | [Composing monitors](composition.md) | worked examples: building trees of operators, attaching consumers, writing new operators |
 
 ## Reading guide

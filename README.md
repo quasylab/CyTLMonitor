@@ -27,6 +27,7 @@ cytlmonitor/        the library (every public class is re-exported by the packag
   monitors/         online boolean monitors (constants, connectives, atomic, temporal, next, filter, instrumented)
   offline/          measures and offline evaluation over an event sequence
   io/               readers of event sequences from JSON and CSV files
+  language/         a language to write the properties to monitor in words
   tests/            unit tests (pytest), mirroring the subpackages, plus smoke tests of the examples
 docs/               documentation: architecture, streaming model, classes, composition
 examples/           runnable examples on synthetic traffic, and a scalability benchmark
@@ -160,6 +161,22 @@ alarm on (5.0,5.1]
 The alarm holds on `[3.5, 5.1]`, while the window holds six or more packets. It
 is published in pieces, each as soon as it is known; `examples/_traffic.py` has
 a consumer, `AlarmPrinter`, that merges them.
+
+Properties can also be written in words with the specification language (see
+[docs/language.md](docs/language.md)), and `parse` or `load` builds their
+monitors. Here the alarm counts the packets of the next 2 seconds:
+
+```python
+from cytlmonitor import parse
+
+spec = parse('''
+measures
+  packets = number of events in the next 2
+properties
+  alarm : packets > 5
+''')
+spec.run(events)       # spec['alarm'] is the monitor, to attach consumers to
+```
 
 ---
 

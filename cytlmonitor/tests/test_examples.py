@@ -151,6 +151,33 @@ class TestExamples(unittest.TestCase):
             plt.close('all')
         self.assertEqual(len(saved[0].axes), 22)
 
+    def test_worker_language_matches_worker_performance(self):
+        expected = example('worker_performance').main(quiet=True)
+        result = example('worker_language').main(quiet=True)
+        names = {'load': 'load', 'completion_time': 'completion', 'heavy': 'heavy',
+                 'next_job': 'next job', 'b_service': 'B service', 'recovery': 'recovery',
+                 'arrivals': 'arrivals', 'throughput': 'throughput'}
+        for scenario in ('stable', 'unreliable'):
+            for name, reference in names.items():
+                with self.subTest(scenario=scenario, name=name):
+                    self.assertEqual(result[scenario][name], expected[scenario][reference])
+
+    def test_worker_language_constants(self):
+        module = example('worker_language')
+        result = module.main(quiet=True, until=60, constants={'MAX_JOBS': 5})
+        # With at most 5 running jobs allowed, even the stable worker is loaded.
+        self.assertTrue(result['stable']['load'])
+
+    def test_worker_language_plot(self):
+        module = example('worker_language')
+        saved = []
+        module.show = lambda: saved.append(plt.gcf())
+        try:
+            module.main(plot=True, quiet=True, until=60)
+        finally:
+            plt.close('all')
+        self.assertEqual(len(saved[0].axes), 16)
+
     def test_scalability_runs_and_reports_linear_growth(self):
         module = example('scalability')
         sizes = [2_000, 4_000, 8_000]

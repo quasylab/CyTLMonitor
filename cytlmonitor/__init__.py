@@ -8,7 +8,8 @@ The library is organised in subpackages:
 * :mod:`cytlmonitor.expressions` -- online quantitative expressions;
 * :mod:`cytlmonitor.monitors`    -- online boolean monitors;
 * :mod:`cytlmonitor.offline`     -- offline evaluation over an event sequence;
-* :mod:`cytlmonitor.io`          -- readers of event sequences from JSON and CSV files.
+* :mod:`cytlmonitor.io`          -- readers of event sequences from JSON and CSV files;
+* :mod:`cytlmonitor.language`    -- a language to write the properties to monitor in words.
 
 Every public class is also re-exported here.
 """
@@ -62,6 +63,7 @@ from cytlmonitor.monitors import (
     UntilMonitor,
 )
 from cytlmonitor.io import CsvEventReader, EventFormatError, EventReader, JsonEventReader
+from cytlmonitor.language import Specification, SpecificationError, load, parse
 from cytlmonitor.offline import Measure, SignalExpression
 
 __all__ = [
@@ -79,4 +81,5 @@ __all__ = [
     'ShiftExpression', 'SumWindowExpression', 'MaxWindowExpression',
     'MinWindowExpression', 'BooleanSignal', 'Measure', 'SignalExpression',
     'EventReader', 'JsonEventReader', 'CsvEventReader', 'EventFormatError',
+    'Specification', 'SpecificationError', 'parse', 'load',
 ]

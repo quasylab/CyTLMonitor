@@ -1,0 +1,50 @@
+# The properties of examples/worker_performance.py, written in the
+# specification language (see docs/language.md).
+
+constants
+  MIN_JOBS = 10       MAX_JOBS = 20
+  MST_THRESHOLD = 1
+  HEAVY_JOBS = 1      HEAVY_DURATION = 2
+  AVERAGE_WINDOW = 5  RATE_WINDOW = 10
+  MAX_IDLE = 0.5      B_RESPONSE = 2
+  RECOVERY = 20
+
+events
+  start : op is "START"
+  done  : op is "DONE"
+
+links
+  # Each DONE event is linked to the START event of the same session.
+  job : from start to done, matched by session
+
+values
+  duration = time - job.time, otherwise 0
+  kind     = job.type
+
+counters
+  running : +1 at start, -1 at done
+
+measures
+  load_avg   = time average of running over the next AVERAGE_WINDOW
+  completion = average of duration over done events in the next AVERAGE_WINDOW
+  heavy_jobs = number of done events with duration > HEAVY_DURATION in the next 50
+  arrivals   = rate of start events with type "A" over the next RATE_WINDOW
+             - rate of start events with type "B" over the next RATE_WINDOW
+  throughput = rate of done events with kind "A" over the next RATE_WINDOW
+             - rate of done events with kind "B" over the next RATE_WINDOW
+
+properties
+  load       : throughout the next 10, load_avg is between MIN_JOBS and MAX_JOBS
+  completion_time : throughout the next 50, completion < MST_THRESHOLD
+  heavy      : heavy_jobs < HEAVY_JOBS
+  next_job   : considering only start events,
+               the next event comes within MAX_IDLE
+  b_service  : considering only done events with kind "B",
+               the next event comes within B_RESPONSE
+               and has duration <= HEAVY_DURATION
+  recovery   : whenever load_avg > MAX_JOBS,
+               load_avg >= MIN_JOBS until, within RECOVERY,
+               load_avg is between MIN_JOBS and MAX_JOBS
+
+show
+  all properties, arrivals, throughput
