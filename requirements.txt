@@ -4,3 +4,4 @@ scapy==2.5.*
 numpy==2.5.*
 matplotlib==3.11.*
 pytest==9.1.*
+scapy==2.5.0
